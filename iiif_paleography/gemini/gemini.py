@@ -3,30 +3,96 @@ from google.genai import types
 import PIL.Image
 import os
 
-client = genai.Client(api_key=os.getenv("GEMINI_KEY"))
 
-with open('prompts/gemini-htr.md', 'r') as f:
-    prompt = f.read()
+class GeminiTranscriber:
+    def __init__(self, api_key=None, model="gemini-3-pro-preview", prompt_path='prompts/gemini-htr.md'):
+        """
+        Initialize the Gemini transcriber.
 
-img = PIL.Image.open('/Users/mark.baggett/Desktop/gemini_sample2_1.jpg')
+        Args:
+            api_key: API key for Gemini. If None, reads from GEMINI_KEY environment variable.
+            model: The Gemini model to use.
+            prompt_path: Path to the prompt file.
+        """
+        self.api_key = api_key or os.getenv("GEMINI_KEY")
+        self.client = genai.Client(api_key=self.api_key)
+        self.model = model
+        self.prompt_path = prompt_path
+        self.prompt = self._load_prompt()
 
-response = client.models.generate_content(
-    model="gemini-3-pro-preview",
-    config=types.GenerateContentConfig(
-        system_instruction=prompt,
-        temperature=0.7,
-        thinking_config=types.ThinkingConfig(
-            include_thoughts=True
-        ),
-    ),
-    contents=[
-        "Please transcribe the following image according to the established guidelines:",
-        img
-    ]
-)
+    def _load_prompt(self):
+        """Load the prompt from file."""
+        with open(self.prompt_path, 'r') as f:
+            return f.read()
 
-for part in response.candidates[0].content.parts:
-    if part.thought:
-        print(f"--- THOUGHT PROCESS ---\n{part.text}\n")
-    else:
-        print(f"--- FINAL TRANSCRIPTION ---\n{part.text}")
+    def transcribe(self, image_path, temperature=0.7, include_thoughts=True):
+        """
+        Transcribe an image using Gemini.
+
+        Args:
+            image_path: Path to the image file.
+            temperature: Temperature for generation.
+            include_thoughts: Whether to include thought process in response.
+
+        Returns:
+            The API response object.
+        """
+        img = PIL.Image.open(image_path)
+
+        response = self.client.models.generate_content(
+            model=self.model,
+            config=types.GenerateContentConfig(
+                system_instruction=self.prompt,
+                temperature=temperature,
+                thinking_config=types.ThinkingConfig(
+                    include_thoughts=include_thoughts
+                ),
+            ),
+            contents=[
+                "Please transcribe the following image according to the established guidelines:",
+                img
+            ]
+        )
+
+        return response
+
+    def print_response(self, response):
+        """Print the response in a formatted way."""
+        for part in response.candidates[0].content.parts:
+            if part.thought:
+                print(f"--- THOUGHT PROCESS ---\n{part.text}\n")
+            else:
+                print(f"--- FINAL TRANSCRIPTION ---\n{part.text}")
+
+    def get_response_dict(self, response):
+        """
+        Extract thought process and final transcription from response.
+
+        Args:
+            response: The API response object.
+
+        Returns:
+            dict: A dictionary with 'thought_process' and 'transcription' keys.
+        """
+        result = {
+            'thought_process': '',
+            'transcription': ''
+        }
+
+        for part in response.candidates[0].content.parts:
+            if part.thought:
+                result['thought_process'] = part.text
+            else:
+                result['transcription'] = part.text
+
+        return result
+
+
+if __name__ == "__main__":
+    # Example usage
+    transcriber = GeminiTranscriber()
+
+    image_path = '/Users/mark.baggett/Desktop/gemini_sample2_1.jpg'
+    response = transcriber.transcribe(image_path)
+    # transcriber.print_response(response)
+    print(transcriber.get_response_dict(response))
