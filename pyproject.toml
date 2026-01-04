@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "iiif-paleography"
+version = "0.1.0"
+description = ""
+authors = ["Mark Baggett <markpbaggett@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+google-genai = "^1.56.0"
+iiif-prezi3 = {git = "https://github.com/markpbaggett/iiif-prezi3.git", rev = "pydantic2-but-still-1"}
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
