@@ -26,7 +26,7 @@ class IIIFv2tov3Converter:
                 height=canvas['height'],
             )
 
-        return manifest
+        return json.loads(manifest.json(indent=4))
 
     def build_metadata(self):
         metadata = []

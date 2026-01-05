@@ -1,15 +1,22 @@
 from iiif_prezi3 import Manifest
 from iiif_paleography.gemini import GeminiTranscriber
+from iiif_paleography.iiif import IIIFv2tov3Converter
 import json
 
 
 class ManifestHTRBuilder:
     def __init__(self, manifest: Manifest, new_id=None, new_base="https://example.org"):
         self.manifest_data = manifest
-        self.new_id = new_id if new_id else self.manifest_data['id']
+        self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
         self.new_base = new_base
 
     def build_htr(self):
+        if '@id' in self.manifest_data:
+            converter = IIIFv2tov3Converter(
+                v2_manifest=self.manifest_data,
+                manifest_id=self.new_id,
+            )
+            self.manifest_data = converter.convert()
         manifest = Manifest(
             **self.manifest_data
         )
@@ -46,11 +53,11 @@ class ManifestHTRBuilder:
 
 
 if __name__ == '__main__':
-    with open('fixtures/mcinnis-39-v3.json', 'r') as f:
+    with open('fixtures/mcinnis_39.json', 'r') as f:
         json_data = json.load(f)
-    builder = ManifestHTRBuilder(json_data, new_id="https://example.org/1234")
+    builder = ManifestHTRBuilder(json_data)
     manifest = builder.build_htr()
-    output_file = 'fixtures/mcinnis-39-v3-htr.json'
+    output_file = 'fixtures/sample.json'
     with open(output_file, 'w') as f:
         f.write(manifest.json(indent=4))
     print(f"HTR manifest written to {output_file}")
