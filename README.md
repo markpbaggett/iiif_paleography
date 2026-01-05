@@ -11,12 +11,12 @@ It is highly influenced by the work of [Ben](https://github.com/benwbrum) and [S
 
 ## Todo
 
-[x] Generate Transcription and Reasoning with Gemini.
-[x] Add Transcription and Reasoning to a Single v3 Manifest.
-[ ] Upgrade a v2 manifest to v3 so I can use iiif_prezi3.
-[ ] Create Full CLI utility.
-[ ] Run over a IIIF collection of manifests.
-[ ] Run over a directory of manifests.
+* [x] Generate Transcription and Reasoning with Gemini.
+* [x] Add Transcription and Reasoning to a Single v3 Manifest.
+* [ ] Upgrade a v2 manifest to v3 so I can use iiif_prezi3.
+* [ ] Create Full CLI utility.
+* [ ] Run over a IIIF collection of manifests.
+* [ ] Run over a directory of manifests.
 
 ## Installation
 
