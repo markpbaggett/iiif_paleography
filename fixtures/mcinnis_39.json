@@ -1,0 +1,64 @@
+{
+  "@context" : "http://iiif.io/api/presentation/2/context.json",
+  "@id" : "https://api-pre.library.tamu.edu/iiif-service/fedora/presentation/bb/97/f2/3e/bb97f23e-803a-4bd6-8406-06802623554c/mcinnis_objects/39",
+  "@type" : "sc:Manifest",
+  "label" : "Letter to Louis L. McInnis from J. D. Lee, February 15, 1883",
+  "logo" : "https://library.tamu.edu/assets/images/tamu-logos/TAM-PrimaryMarkB.png",
+  "metadata" : [ {
+    "label" : "date",
+    "value" : "1883-02-15"
+  }, {
+    "label" : "title",
+    "value" : "Letter to Louis L. McInnis from J. D. Lee, February 15, 1883"
+  }, {
+    "label" : "isPartOf",
+    "value" : "Box 1 Louis L. McInnis Papers/Box 1 Folder 13 Louis L. McInnis Papers"
+  }, {
+    "label" : "context",
+    "value" : "bb/97/f2/3e/bb97f23e-803a-4bd6-8406-06802623554c/mcinnis_objects/39"
+  } ],
+  "sequences" : [ {
+    "@id" : "https://api-pre.library.tamu.edu/iiif-service/fedora/sequence/bb/97/f2/3e/bb97f23e-803a-4bd6-8406-06802623554c/mcinnis_objects/39",
+    "@type" : "sc:Sequence",
+    "canvases" : [ {
+      "@id" : "https://api-pre.library.tamu.edu/iiif-service/fedora/canvas/bb/97/f2/3e/bb97f23e-803a-4bd6-8406-06802623554c/mcinnis_objects/39/pages/page_0",
+      "@type" : "sc:Canvas",
+      "height" : 4214,
+      "images" : [ {
+        "@id" : "https://api-pre.library.tamu.edu/iiif/2/558c93e3-7fd3-388c-8114-08d20a9e47b0/info.json",
+        "@type" : "oa:Annotation",
+        "motivation" : "sc:painting",
+        "on" : "https://api-pre.library.tamu.edu/iiif-service/fedora/canvas/bb/97/f2/3e/bb97f23e-803a-4bd6-8406-06802623554c/mcinnis_objects/39/pages/page_0",
+        "resource" : {
+          "@id" : "https://api-pre.library.tamu.edu/iiif/2/558c93e3-7fd3-388c-8114-08d20a9e47b0/full/full/0/default.jpg",
+          "@type" : "dctypes:Image",
+          "format" : "image/tiff",
+          "height" : 4214,
+          "service" : {
+            "label" : "Fedora IIIF Image Resource Service",
+            "profile" : "http://iiif.io/api/image/2/level0.json",
+            "@context" : "http://iiif.io/api/image/2/context.json",
+            "@id" : "https://api-pre.library.tamu.edu/iiif/2/558c93e3-7fd3-388c-8114-08d20a9e47b0"
+          },
+          "width" : 3191
+        }
+      } ],
+      "label" : "fedora:bb/97/f2/3e/bb97f23e-803a-4bd6-8406-06802623554c/mcinnis_objects/39/pages/page_0",
+      "metadata" : [ {
+        "label" : "context",
+        "value" : "bb/97/f2/3e/bb97f23e-803a-4bd6-8406-06802623554c/mcinnis_objects/39/pages/page_0"
+      } ],
+      "width" : 3191
+    } ],
+    "label" : "Letter to Louis L. McInnis from J. D. Lee, February 15, 1883"
+  } ],
+  "thumbnail" : {
+    "@id" : "https://api-pre.library.tamu.edu/iiif/2/558c93e3-7fd3-388c-8114-08d20a9e47b0/full/!100,100/0/default.jpg",
+    "service" : {
+      "label" : "Fedora IIIF Image Resource Service",
+      "profile" : "http://iiif.io/api/image/2/level0.json",
+      "@context" : "http://iiif.io/api/image/2/context.json",
+      "@id" : "https://api-pre.library.tamu.edu/iiif/2/558c93e3-7fd3-388c-8114-08d20a9e47b0"
+    }
+  }
+}
