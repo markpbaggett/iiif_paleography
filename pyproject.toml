@@ -9,7 +9,10 @@ readme = "README.md"
 python = "^3.12"
 google-genai = "^1.56.0"
 iiif-prezi3 = {git = "https://github.com/markpbaggett/iiif-prezi3.git", rev = "pydantic2-but-still-1"}
+click = "^8.3.1"
 
+[tool.poetry.scripts]
+iiif-transcribe = "iiif_paleography.transcribe:cli"
 
 [build-system]
 requires = ["poetry-core"]

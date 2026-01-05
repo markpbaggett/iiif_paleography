@@ -18,7 +18,7 @@ Example output looks like this:
 * [x] Generate Transcription and Reasoning with Gemini.
 * [x] Add Transcription and Reasoning to a Single v3 Manifest.
 * [x] Upgrade (parts of a) v2 manifest to v3 so I can use iiif_prezi3.
-* [ ] Create Full CLI utility.
+* [x] Init CLI utility.
 * [ ] Run over a IIIF collection of manifests.
 * [ ] Run over a directory of manifests.
 
@@ -41,6 +41,27 @@ poetry install
   - `requests`
 
 ## Usage
+
+### Running from Command Line
+
+Generate transcription and annotations for a single manifest online and update its identifier:
+
+```bash
+iiif-transcribe manifest -p "https://api-pre.library.tamu.edu/iiif-service/fedora/presentation/bb/
+97/f2/3e/bb97f23e-803a-4bd6-8406-06802623554c/mcinnis_objects/241" -o "fixtures/mcinnis-241.json" -n "https://tamulib-dc-labs.github.io/custom-iiif-manifests/manifests/mcinnis-241.json" 
+```
+
+Or update a manifest on disk:
+
+```bash
+iiif-transcribe manifest -p fixtures/manifest.json -o "fixtures/mcinnis-241.json" -n "https://tamulib-dc-labs.github.io/custom-iiif-manifests/manifests/mcinnis-241.json" 
+```
+
+Or run the transcriber directly:
+
+```bash
+python -m iiif_paleography.gemini.gemini
+```
 
 ### GeminiTranscriber
 
@@ -79,16 +100,6 @@ manifest = builder.build_htr()
 # Save to file
 with open('output.json', 'w') as f:
     f.write(manifest.json(indent=4))
-```
-
-### Running from Command Line
-
-```bash
-# Run the main script
-python -m iiif_paleography.iiif_paleography
-
-# Run the transcriber directly
-python -m iiif_paleography.gemini.gemini
 ```
 
 ## Configuration

@@ -2,6 +2,8 @@ from iiif_prezi3 import Manifest
 from iiif_paleography.gemini import GeminiTranscriber
 from iiif_paleography.iiif import IIIFv2tov3Converter
 import json
+import click
+import requests
 
 
 class ManifestHTRBuilder:
@@ -33,11 +35,12 @@ class ManifestHTRBuilder:
                 body={
                     "type": "TextualBody",
                     "language": "en",
-                    "format": "text/plain",
-                    "value": response['transcription']
+                    "format": "text/html",
+                    "value": f"<span>{response['transcription']}</span>"
                 },
                target=canvas.id
             )
+            # @TODO:  I need to escape markup in the value so that it isn't rendered as HTML.
             canvas.make_annotation(
                 motivation="commenting",
                 body={
@@ -51,13 +54,50 @@ class ManifestHTRBuilder:
             i += 1
         return manifest
 
+@click.group()
+def cli() -> None:
+    pass
 
-if __name__ == '__main__':
-    with open('fixtures/mcinnis_39.json', 'r') as f:
-        json_data = json.load(f)
-    builder = ManifestHTRBuilder(json_data)
+
+@cli.command(
+    "manifest", help="Transcribe a single IIIF Manifest"
+)
+@click.option(
+    "--path",
+    "-p",
+    help="The path to the Manifest",
+)
+@click.option(
+    "--output",
+    "-o",
+    help="The output file path",
+    default="fixtures/transcribed.json",
+)
+@click.option(
+    "--new_id",
+    "-n",
+    help="A new identifier for your manifest",
+)
+def transcribe_manifest(path: str, output: str, new_id: str) -> None:
+    if path.startswith("https"):
+        r = requests.get(path)
+        if r.status_code != 200:
+            raise click.ClickException(f"{r.status_code}: {r.text} on {path}")
+        json_data = r.json()
+    else:
+        with open(path, 'r') as f:
+            json_data = json.load(f)
+    if new_id:
+        identifier = new_id
+        builder = ManifestHTRBuilder(
+            json_data,
+            new_id=identifier,
+        )
+    else:
+        builder = ManifestHTRBuilder(
+            json_data,
+        )
     manifest = builder.build_htr()
-    output_file = 'fixtures/sample.json'
-    with open(output_file, 'w') as f:
+    with open(output, 'w') as f:
         f.write(manifest.json(indent=4))
-    print(f"HTR manifest written to {output_file}")
+    print(f"HTR manifest written to {output}")
