@@ -89,9 +89,7 @@ class GeminiTranscriber:
 
 
 if __name__ == "__main__":
-    # Example usage
     transcriber = GeminiTranscriber()
-
     image_path = '/Users/mark.baggett/Desktop/gemini_sample2_1.jpg'
     response = transcriber.transcribe(image_path)
     # transcriber.print_response(response)
