@@ -2,6 +2,8 @@ from google import genai
 from google.genai import types
 import PIL.Image
 import os
+import requests
+from io import BytesIO
 
 
 class GeminiTranscriber:
@@ -30,14 +32,22 @@ class GeminiTranscriber:
         Transcribe an image using Gemini.
 
         Args:
-            image_path: Path to the image file.
+            image_path: Path to the image file or URL to a remote image.
             temperature: Temperature for generation.
             include_thoughts: Whether to include thought process in response.
 
         Returns:
             The API response object.
         """
-        img = PIL.Image.open(image_path)
+        # Check if image_path is a URL
+        if image_path.startswith(('http://', 'https://')):
+            # Download the image from URL
+            response = requests.get(image_path)
+            response.raise_for_status()
+            img = PIL.Image.open(BytesIO(response.content))
+        else:
+            # Open local file
+            img = PIL.Image.open(image_path)
 
         response = self.client.models.generate_content(
             model=self.model,
@@ -90,7 +100,7 @@ class GeminiTranscriber:
 
 if __name__ == "__main__":
     transcriber = GeminiTranscriber()
-    image_path = '/Users/mark.baggett/Desktop/gemini_sample2_1.jpg'
+    # image_path = '/Users/mark.baggett/Desktop/gemini_sample2_1.jpg'
+    image_path = "https://api-pre.library.tamu.edu/iiif/2/558c93e3-7fd3-388c-8114-08d20a9e47b0/full/full/0/default.jpg"
     response = transcriber.transcribe(image_path)
-    # transcriber.print_response(response)
     print(transcriber.get_response_dict(response))
