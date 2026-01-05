@@ -11,7 +11,7 @@ It is highly influenced by the work of [Ben](https://github.com/benwbrum) and [S
 
 Example output looks like this:
 
-[View Example in Theseus](https://tamulib-dc-labs.github.io/custom-iiif-manifests/manifests/mcinnis-39-v3-htr.json)
+[View Example in Clover](https://samvera-labs.github.io/clover-iiif/docs/viewer/demo?iiif-content=https%3A%2F%2Ftamulib-dc-labs.github.io%2Fcustom-iiif-manifests%2Fmanifests%2Fmcinnis-39-v3-htr.json)
 
 ## Todo
 
@@ -65,7 +65,7 @@ print(result['thought_process'])
 ### ManifestHTRBuilder
 
 ```python
-from iiif_paleography.iiif_paleography import ManifestHTRBuilder
+from iiif_paleography.transcribe import ManifestHTRBuilder
 import json
 
 # Load a IIIF v3 manifest
