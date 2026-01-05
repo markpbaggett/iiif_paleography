@@ -331,7 +331,7 @@ docs = ["griffe (>=0.25.2,<2.0.0)", "mkdocs (>=1.4.0,<2.0.0)", "mkdocs-awesome-p
 type = "git"
 url = "https://github.com/markpbaggett/iiif-prezi3.git"
 reference = "pydantic2-but-still-1"
-resolved_reference = "a3e755318936a2b1aaeb673629a0eaa575f43cf9"
+resolved_reference = "330c333c3d975a2fbf8dc2a0c0782adcffe6d3cf"
 
 [[package]]
 name = "pillow"

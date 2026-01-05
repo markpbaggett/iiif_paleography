@@ -39,14 +39,11 @@ class GeminiTranscriber:
         Returns:
             The API response object.
         """
-        # Check if image_path is a URL
         if image_path.startswith(('http://', 'https://')):
-            # Download the image from URL
             response = requests.get(image_path)
             response.raise_for_status()
             img = PIL.Image.open(BytesIO(response.content))
         else:
-            # Open local file
             img = PIL.Image.open(image_path)
 
         response = self.client.models.generate_content(
