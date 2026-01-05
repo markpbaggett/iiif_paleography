@@ -1,6 +1,7 @@
 import json
 from iiif_prezi3 import Manifest, KeyValueString
 
+
 class IIIFv2tov3Converter:
     def __init__(self, v2_manifest, manifest_id=None):
         self.v2_manifest = v2_manifest
@@ -45,6 +46,12 @@ if __name__ == '__main__':
 
     converter = IIIFv2tov3Converter(
         v2_manifest=data,
-        manifest_id="https://example.org/manifest/v2/123.json"
+        manifest_id="https://markpbaggett.github.io/iiif-paleography/fixtures/mcinnis-39-v3.json"
     )
-    print(converter.convert())
+    data = converter.convert()
+    with open("fixtures/mcinnis-39-v3.json", "w") as f:
+        f.write(
+            data.json(
+                indent=4
+            )
+        )
