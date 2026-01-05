@@ -9,6 +9,10 @@ It is highly influenced by the work of [Ben](https://github.com/benwbrum) and [S
 
 **Note**: This is a work in progress.
 
+Example output looks like this:
+
+[View Example in Theseus](https://tamulib-dc-labs.github.io/custom-iiif-manifests/manifests/mcinnis-39-v3-htr.json)
+
 ## Todo
 
 * [x] Generate Transcription and Reasoning with Gemini.
