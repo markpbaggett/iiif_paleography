@@ -36,6 +36,9 @@ class ManifestHTRBuilder:
                     "type": "TextualBody",
                     "language": "en",
                     "format": "text/html",
+                    "created": "2026-01-06T16:28:26.933Z",
+                    "creator": "Mark",
+                    "purpose": "transcribing",
                     "value": f"<span>{response['transcription']}</span>"
                 },
                target=canvas.id
@@ -99,12 +102,5 @@ def transcribe_manifest(path: str, output: str, new_id: str) -> None:
         )
     manifest = builder.build_htr()
     with open(output, 'w') as f:
-        f.write(
-            manifest.model_dump_json(
-                indent=4,
-                exclude_unset=True,
-                exclude_defaults=True,
-                exclude_none=True,
-            )
-        )
+        f.write(manifest.json(indent=4))
     print(f"HTR manifest written to {output}")
