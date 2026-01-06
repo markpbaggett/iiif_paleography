@@ -99,5 +99,5 @@ def transcribe_manifest(path: str, output: str, new_id: str) -> None:
         )
     manifest = builder.build_htr()
     with open(output, 'w') as f:
-        f.write(manifest.json(indent=4))
+        f.write(manifest.model_dump_json(indent=4))
     print(f"HTR manifest written to {output}")
