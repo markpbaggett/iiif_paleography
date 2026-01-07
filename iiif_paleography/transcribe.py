@@ -8,10 +8,11 @@ from tqdm import tqdm
 
 
 class ManifestHTRBuilder:
-    def __init__(self, manifest: Manifest, new_id=None, new_base="https://example.org"):
+    def __init__(self, manifest: Manifest, new_id=None, new_base="https://example.org", nuke_tamu=False):
         self.manifest_data = manifest
         self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
         self.new_base = new_base
+        self.nuke = nuke_tamu
 
     def build_htr(self):
         if '@id' in self.manifest_data:
@@ -25,10 +26,14 @@ class ManifestHTRBuilder:
         )
         if self.new_id:
             manifest.id = self.new_id
+        if self.nuke:
+            manifest.thumbnail[0].id = manifest.thumbnail[0].id.replace('!100,100', 'pct:25')
         i = 0
         transcriber = GeminiTranscriber()
         for canvas in tqdm(manifest.items):
             image = canvas.items[0].items[0].body.id
+            if self.nuke:
+                canvas.label['none'][0] = f"Page {i}"
             api_response = transcriber.transcribe(image)
             response = transcriber.get_response_dict(api_response)
             canvas.make_annotation(
@@ -80,7 +85,13 @@ def cli() -> None:
     "-n",
     help="A new identifier for your manifest",
 )
-def transcribe_manifest(path: str, output: str, new_id: str) -> None:
+@click.option(
+    "--is_tamu",
+    "-t",
+    is_flag=True,
+    help="Whether the manifest is from TAMU and needs to get gross stuff purged",
+)
+def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool) -> None:
     if path.startswith("https"):
         r = requests.get(path)
         if r.status_code != 200:
@@ -94,10 +105,12 @@ def transcribe_manifest(path: str, output: str, new_id: str) -> None:
         builder = ManifestHTRBuilder(
             json_data,
             new_id=identifier,
+            nuke_tamu=is_tamu,
         )
     else:
         builder = ManifestHTRBuilder(
             json_data,
+            nuke_tamu=is_tamu,
         )
     manifest = builder.build_htr()
     with open(output, 'w') as f:
