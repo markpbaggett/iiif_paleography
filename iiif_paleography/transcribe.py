@@ -4,6 +4,7 @@ from iiif_paleography.iiif import IIIFv2tov3Converter
 import json
 import click
 import requests
+from tqdm import tqdm
 
 
 class ManifestHTRBuilder:
@@ -26,7 +27,7 @@ class ManifestHTRBuilder:
             manifest.id = self.new_id
         i = 0
         transcriber = GeminiTranscriber()
-        for canvas in manifest.items:
+        for canvas in tqdm(manifest.items):
             image = canvas.items[0].items[0].body.id
             api_response = transcriber.transcribe(image)
             response = transcriber.get_response_dict(api_response)
@@ -36,8 +37,6 @@ class ManifestHTRBuilder:
                     "type": "TextualBody",
                     "language": "en",
                     "format": "text/html",
-                    "created": "2026-01-06T16:28:26.933Z",
-                    "creator": "Mark",
                     "purpose": "transcribing",
                     "value": f"<span>{response['transcription']}</span>"
                 },
@@ -49,7 +48,7 @@ class ManifestHTRBuilder:
                 body={
                     "type": "TextualBody",
                     "language": "none",
-                    "format": "text/plain",
+                    "format": "text/markdown",
                     "value": response['thought_process']
                 },
                 target=canvas.id,
@@ -102,5 +101,7 @@ def transcribe_manifest(path: str, output: str, new_id: str) -> None:
         )
     manifest = builder.build_htr()
     with open(output, 'w') as f:
-        f.write(manifest.json(indent=4))
+        json_str = manifest.json()
+        json_obj = json.loads(json_str)
+        f.write(json.dumps(json_obj, indent=4))
     print(f"HTR manifest written to {output}")
