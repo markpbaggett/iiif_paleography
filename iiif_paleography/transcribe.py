@@ -5,6 +5,7 @@ import json
 import click
 import requests
 from tqdm import tqdm
+from pathlib import Path
 
 
 class ManifestHTRBuilder:
@@ -118,3 +119,49 @@ def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool) -> N
         json_obj = json.loads(json_str)
         f.write(json.dumps(json_obj, indent=4))
     print(f"HTR manifest written to {output}")
+
+
+@cli.command(
+    "list", help="Transcribe a list of IIIF Manifests"
+)
+@click.option(
+    "--path",
+    "-p",
+    help="The path to the list as a text file with ids on each line",
+)
+@click.option(
+    "--output",
+    "-o",
+    help="The output directory path to write each json",
+    default="output",
+)
+@click.option(
+    "--is_tamu",
+    "-t",
+    is_flag=True,
+    help="Whether the manifest is from TAMU and needs to get gross stuff purged",
+)
+def transcribe_list(path: str, output: str, is_tamu: bool) -> None:
+    all_ids = []
+    with open(path, 'r') as f:
+        for line in f:
+            if line.strip() != "" and line.strip() not in all_ids:
+                all_ids.append(line.strip())
+    for id in tqdm(all_ids):
+        path = Path(f"{output}/mcinnis-{id}.json")
+        if not path.exists():
+            r = requests.get(f"https://api-pre.library.tamu.edu/iiif-service/fedora/presentation/bb/97/f2/3e/bb97f23e-803a-4bd6-8406-06802623554c/mcinnis_objects/{id}")
+            if r.status_code != 200:
+                raise click.ClickException(f"{r.status_code}: {r.text} on {path}")
+            json_data = r.json()
+            builder = ManifestHTRBuilder(
+                json_data,
+                new_id=f"https://tamulib-dc-labs.github.io/custom-iiif-manifests/manifests/mcinnis/mcinnis-{id}.json",
+                nuke_tamu=is_tamu,
+            )
+            manifest = builder.build_htr()
+            with open(f"{output}/mcinnis-{id}.json", 'w') as f:
+                json_str = manifest.json()
+                json_obj = json.loads(json_str)
+                f.write(json.dumps(json_obj, indent=4))
+            print(f"HTR manifest written to {output}")
