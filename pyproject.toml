@@ -11,6 +11,7 @@ google-genai = "^1.56.0"
 iiif-prezi3 = {git = "https://github.com/markpbaggett/iiif-prezi3.git", rev = "pydantic2-but-still-1"}
 click = "^8.3.1"
 tqdm = "^4.67.1"
+toon-format = {git = "https://github.com/toon-format/toon-python.git"}
 
 [tool.poetry.scripts]
 iiif-transcribe = "iiif_paleography.transcribe:cli"

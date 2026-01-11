@@ -707,6 +707,21 @@ doc = ["reno", "sphinx"]
 test = ["pytest", "tornado (>=4.5)", "typeguard"]
 
 [[package]]
+name = "toon_format"
+version = "0.9.0b1"
+description = "A compact, human-readable serialization format designed for passing structured data to Large Language Models with significantly reduced token usage"
+optional = false
+python-versions = ">=3.8"
+files = []
+develop = false
+
+[package.source]
+type = "git"
+url = "https://github.com/toon-format/toon-python.git"
+reference = "HEAD"
+resolved_reference = "6b26984a01279defdcf40ab9d09bc418fe8133ac"
+
+[[package]]
 name = "tqdm"
 version = "4.67.1"
 description = "Fast, Extensible Progress Meter"
@@ -850,4 +865,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "a7fe90df55f068f3ccb6207b3dcc6758d0604194d9580c9e90301b696a1d8c25"
+content-hash = "8110c109265eda7daf387a3cb41a8d94df8461ad62f4665c8ca6fa6a803ac7e5"
