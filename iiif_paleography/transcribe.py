@@ -32,33 +32,37 @@ class ManifestHTRBuilder:
         i = 0
         transcriber = GeminiTranscriber()
         for canvas in tqdm(manifest.items):
-            image = canvas.items[0].items[0].body.id
-            if self.nuke:
-                canvas.label['none'][0] = f"Page {i}"
-            api_response = transcriber.transcribe(image)
-            response = transcriber.get_response_dict(api_response)
-            canvas.make_annotation(
-                motivation="transcribing",
-                body={
-                    "type": "TextualBody",
-                    "language": "en",
-                    "format": "text/html",
-                    "purpose": "transcribing",
-                    "value": f"<span>{response['transcription']}</span>"
-                },
-               target=canvas.id
-            )
-            # @TODO:  I need to escape markup in the value so that it isn't rendered as HTML.
-            canvas.make_annotation(
-                motivation="commenting",
-                body={
-                    "type": "TextualBody",
-                    "language": "none",
-                    "format": "text/markdown",
-                    "value": response['thought_process']
-                },
-                target=canvas.id,
-            )
+            try:
+                image = canvas.items[0].items[0].body.id
+                if self.nuke:
+                    canvas.label['none'][0] = f"Page {i}"
+                api_response = transcriber.transcribe(image)
+                response = transcriber.get_response_dict(api_response)
+                canvas.make_annotation(
+                    motivation="transcribing",
+                    body={
+                        "type": "TextualBody",
+                        "language": "en",
+                        "format": "text/html",
+                        "purpose": "transcribing",
+                        "value": f"<span>{response['transcription']}</span>"
+                    },
+                   target=canvas.id
+                )
+                # @TODO:  I need to escape markup in the value so that it isn't rendered as HTML.
+                canvas.make_annotation(
+                    motivation="commenting",
+                    body={
+                        "type": "TextualBody",
+                        "language": "none",
+                        "format": "text/markdown",
+                        "value": response['thought_process']
+                    },
+                    target=canvas.id,
+                )
+            except Exception as e:
+                print(f"\nError processing canvas {i} ({canvas.id}): {e}")
+                print(f"Skipping this canvas and continuing...")
             i += 1
         return manifest
 

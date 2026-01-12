@@ -80,11 +80,23 @@ class GeminiTranscriber:
 
         Returns:
             dict: A dictionary with 'thought_process' and 'transcription' keys.
+
+        Raises:
+            ValueError: If the response is invalid or empty.
         """
         result = {
             'thought_process': '',
             'transcription': ''
         }
+
+        if not response.candidates or len(response.candidates) == 0:
+            raise ValueError(f"No candidates in response. Response: {response}")
+
+        if not hasattr(response.candidates[0], 'content') or response.candidates[0].content is None:
+            raise ValueError(f"No content in response candidate. Response: {response}")
+
+        if not hasattr(response.candidates[0].content, 'parts') or response.candidates[0].content.parts is None:
+            raise ValueError(f"No parts in response content. Response: {response}")
 
         for part in response.candidates[0].content.parts:
             if part.thought:
