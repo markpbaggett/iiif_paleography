@@ -20,18 +20,23 @@ Transcribe the entire document following these rules:
 ---
 
 ## Part 2: Spatial Mapping (TOON)
-
 Immediately following the transcription, provide the line-by-line data in **TOON (Token-Oriented Object Notation)**.
 
-* **Coordinate System**: (0,0) is top-left. Use absolute pixel values.
-* **Structure**: Each line of the document must be its own entry.
+Coordinate Definitions:
+
+* **x**: The horizontal pixel distance from the left edge to the start of the text.
+* **y**: The vertical pixel distance from the top edge to the top of the text line.
+* **w**: The total width of the text line in pixels.
+* **h**: The total height of the text line in pixels.
+
+The image is 2257 pixels wide and 3688 pixels high.
 
 **TOON Schema**:
 
 ```text
-lines[N]{raw,x1,y1,x2,y2}:
-"raw_text_line_1",x1,y1,x2,y2
-"raw_text_line_2",x1,y1,x2,y2
+lines[N]{raw,x,y,w,h}:
+"raw_text_line_1",x,y,w,h
+"raw_text_line_2",x,y,w,h
 
 ```
 
