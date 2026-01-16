@@ -29,7 +29,7 @@ Coordinate Definitions:
 * **w**: The total width of the text line in pixels.
 * **h**: The total height of the text line in pixels.
 
-The image is 2257 pixels wide and 3688 pixels high.
+The image is [INSERT WIDTH] pixels wide and [INSERT HEIGHT] pixels high.
 
 **TOON Schema**:
 
