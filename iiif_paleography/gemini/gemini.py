@@ -7,7 +7,7 @@ from io import BytesIO
 
 
 class GeminiTranscriber:
-    def __init__(self, api_key=None, model="gemini-3-pro-preview", prompt_path='prompts/gemini-htr.md'):
+    def __init__(self, api_key=None, model="gemini-3-pro-preview", prompt_path='prompts/gemini-htr.md', width=None, height=None):
         """
         Initialize the Gemini transcriber.
 
@@ -16,6 +16,8 @@ class GeminiTranscriber:
             model: The Gemini model to use.
             prompt_path: Path to the prompt file.
         """
+        self.width = width
+        self.height = height
         self.api_key = api_key or os.getenv("GEMINI_KEY")
         self.client = genai.Client(api_key=self.api_key)
         self.model = model
@@ -26,6 +28,14 @@ class GeminiTranscriber:
         """Load the prompt from file."""
         with open(self.prompt_path, 'r') as f:
             return f.read()
+
+    def _prepare_prompt(self, img):
+        """Prepare prompt, replacing dimension placeholders if needed."""
+        prompt = self.prompt
+        if 'gemini-htr-and-coords.md' in self.prompt_path:
+            prompt = prompt.replace('INSERT_WIDTH', str(self.width))
+            prompt = prompt.replace('INSERT_HEIGHT', str(self.height))
+        return prompt
 
     def transcribe(self, image_path, temperature=0.7, include_thoughts=True):
         """
@@ -46,10 +56,12 @@ class GeminiTranscriber:
         else:
             img = PIL.Image.open(image_path)
 
+        prepared_prompt = self._prepare_prompt(img)
+
         response = self.client.models.generate_content(
             model=self.model,
             config=types.GenerateContentConfig(
-                system_instruction=self.prompt,
+                system_instruction=prepared_prompt,
                 temperature=temperature,
                 thinking_config=types.ThinkingConfig(
                     include_thoughts=include_thoughts
@@ -108,8 +120,7 @@ class GeminiTranscriber:
 
 
 if __name__ == "__main__":
-    transcriber = GeminiTranscriber()
-    # image_path = '/Users/mark.baggett/Desktop/gemini_sample2_1.jpg'
-    image_path = "https://api-pre.library.tamu.edu/iiif/2/558c93e3-7fd3-388c-8114-08d20a9e47b0/full/full/0/default.jpg"
+    transcriber = GeminiTranscriber(prompt_path='prompts/gemini-htr-and-coords.md', width=2257, height=3688)
+    image_path = "https://api-pre.library.tamu.edu/iiif/2/5349c9b2-c7d0-3b9c-a6d5-7a3adeb698e2/full/564,/0/default.jpg"
     response = transcriber.transcribe(image_path)
     print(transcriber.get_response_dict(response))
