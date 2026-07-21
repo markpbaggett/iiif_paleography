@@ -7,7 +7,7 @@ from io import BytesIO
 
 
 class GeminiTranscriber:
-    def __init__(self, api_key=None, model="gemini-3-pro-preview", prompt_path='prompts/gemini-htr.md', width=None, height=None):
+    def __init__(self, api_key=None, model="gemini-3.1-pro-preview", prompt_path='prompts/gemini-htr.md', width=None, height=None):
         """
         Initialize the Gemini transcriber.
 

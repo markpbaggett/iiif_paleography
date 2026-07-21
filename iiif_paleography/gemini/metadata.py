@@ -2,24 +2,38 @@ import os
 from google import genai
 from google.genai import types
 from toon_format import decode
+import PIL.Image
+import requests
+from io import BytesIO
 
 
 class GeminiMetadata:
-    def __init__(self, api_key=None, model="gemini-3-pro-preview"):
+    def __init__(self, api_key=None, model="gemini-3.1-pro-preview", prompt_path='prompts/gemini-metadata.md'):
         self.api_key = api_key or os.getenv("GEMINI_KEY")
         self.client = genai.Client(api_key=self.api_key)
         self.model = model
+        self.prompt_path = prompt_path
         self.prompt = self._load_prompt()
 
     def _load_prompt(self):
         """Load the prompt from file."""
-        with open("prompts/gemini-metadata.md", 'r') as f:
+        with open(self.prompt_path, 'r') as f:
             return f.read()
 
-    def generate_metadata(self, transcription_text):
+    def generate_metadata(self, transcription_text=None, image_url=None):
         """
-        Takes raw text and returns a structured Python dictionary.
+        Takes raw text or an image URL and returns a structured Python dictionary.
         """
+        if not transcription_text and not image_url:
+            raise ValueError("Must provide either transcription_text or image_url")
+
+        if image_url:
+            r = requests.get(image_url)
+            r.raise_for_status()
+            img = PIL.Image.open(BytesIO(r.content))
+            contents = ["Please analyze the following image:", img]
+        else:
+            contents = [f"Transcription to analyze:\n\n{transcription_text}"]
 
         response = self.client.models.generate_content(
             model=self.model,
@@ -27,7 +41,7 @@ class GeminiMetadata:
                 system_instruction=self.prompt,
                 temperature=0.1,
             ),
-            contents=[f"Transcription to analyze:\n\n{transcription_text}"]
+            contents=contents
         )
 
         toon_string = response.text.strip()
@@ -70,5 +84,8 @@ Truly -
 W. J. Swain
     """
     meta_engine = GeminiMetadata()
-    metadata = meta_engine.generate_metadata(raw_text)
+    metadata = meta_engine.generate_metadata(transcription_text=raw_text)
     print(metadata)
+    # meta_engine = GeminiMetadata(prompt_path='prompts/gemini-map.md')
+    # metadata = meta_engine.generate_metadata(image_url="https://api-pre.library.tamu.edu/iiif/2/aHR0cHM6Ly9hcGktcHJlLmxpYnJhcnkudGFtdS5lZHUvZmNyZXBvL3Jlc3QvYmF0Y2gtc2VydmljZS1tYXBzLXRlc3RzX29iamVjdHMvMTE2L3BhZ2VzL3BhZ2VfMC9maWxlcy9zZXJ2aWNlX21hcHNfMDExNV8wMDAxLmpwMg==/full/870,/0/default.jpg")
+    # print(metadata)

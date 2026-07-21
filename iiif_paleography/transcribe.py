@@ -48,11 +48,10 @@ class ManifestHTRBuilder:
         if self.with_coords:
             word_coords = decode(response['transcription'])
             for coord in word_coords:
-                print(coord)
                 canvas.make_annotation(
                     motivation="tagging",
                     purpose="transcribing",
-                    creator="gemini-3-pro-preview",
+                    creator="gemini-3.1-pro-preview",
                     created=timestamp,
                     generator="iiif-paleography@v0.1.0",
                     generated=timestamp,
@@ -69,7 +68,7 @@ class ManifestHTRBuilder:
             canvas.make_annotation(
                 motivation="transcribing",
                 purpose="transcribing",
-                creator="gemini-3-pro-preview",
+                creator="gemini-3.1-pro-preview",
                 created=timestamp,
                 generator="iiif-paleography@v0.1.0",
                 generated=timestamp,
@@ -105,7 +104,7 @@ class ManifestHTRBuilder:
                 canvas.make_annotation(
                     motivation="commenting",
                     purpose="transcribing",
-                    creator="gemini-3-pro-preview",
+                    creator="gemini-3.1-pro-preview",
                     created=timestamp,
                     generator="iiif-paleography@v0.1.0",
                     generated=timestamp,
