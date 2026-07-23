@@ -141,6 +141,10 @@ class ManifestHTRBuilder:
         return manifest
 
 
+REASONING_PREFIX = "**<span><b>Reasoning</b></span>:**\n\n\n"
+TRANSCRIBING_PREFIX = "<span><b>Transcription:</b><br/><br/>\n"
+
+
 class ManifestAnnotationsBuilder:
     """
     Transcribes every canvas of a manifest and returns the results as plain
@@ -174,10 +178,10 @@ class ManifestAnnotationsBuilder:
                 response = transcriber.get_response_dict(api_response)
                 entries.append({
                     "reasoning": [
-                        {"value": response['thought_process'], "mime_type": "text/markdown"}
+                        {"value": REASONING_PREFIX + response['thought_process'], "mime_type": "text/markdown"}
                     ],
                     "transcribing": [
-                        {"value": f"<span>{response['transcription']}</span>", "mime_type": "text/html"}
+                        {"value": TRANSCRIBING_PREFIX + response['transcription'] + "</span>", "mime_type": "text/html"}
                     ],
                 })
             except Exception as e:
