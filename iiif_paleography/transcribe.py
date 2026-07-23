@@ -1,13 +1,42 @@
 from iiif_prezi3 import Manifest
+from iiif_paleography import __version__
 from iiif_paleography.gemini import GeminiTranscriber
 from iiif_paleography.iiif import IIIFv2tov3Converter
 import json
+import csv
+import os
 import click
 import requests
 from tqdm import tqdm
 from pathlib import Path
 from toon_format import decode
 from datetime import datetime, timezone
+
+
+def _create_transcriber(canvas, with_coords=False):
+    if with_coords:
+        width = str(canvas.items[0].items[0].body.width)
+        height = str(canvas.items[0].items[0].body.height)
+        return GeminiTranscriber(
+            prompt_path='prompts/gemini-htr-and-coords.md',
+            width=width, height=height
+        )
+    return GeminiTranscriber()
+
+
+def _get_image_url(canvas, with_coords=False):
+    url = canvas.items[0].items[0].body.id
+    if with_coords:
+        url = url.replace('full/full', 'full/pct:25')
+    return url
+
+
+def safe_json(obj):
+    """
+    Serialize to JSON without \\" sequences that confuse PHP's fgetcsv.
+    Uses \\u0022 (Unicode escape for ") instead -- json_decode restores it.
+    """
+    return json.dumps(obj).replace('\\"', '\\u0022')
 
 
 class ManifestHTRBuilder:
@@ -28,20 +57,10 @@ class ManifestHTRBuilder:
             self.manifest_data = converter.convert()
 
     def _create_transcriber(self, canvas):
-        if self.with_coords:
-            width = str(canvas.items[0].items[0].body.width)
-            height = str(canvas.items[0].items[0].body.height)
-            return GeminiTranscriber(
-                prompt_path='prompts/gemini-htr-and-coords.md',
-                width=width, height=height
-            )
-        return GeminiTranscriber()
+        return _create_transcriber(canvas, with_coords=self.with_coords)
 
     def _get_image_url(self, canvas):
-        url = canvas.items[0].items[0].body.id
-        if self.with_coords:
-            url = url.replace('full/full', 'full/pct:25')
-        return url
+        return _get_image_url(canvas, with_coords=self.with_coords)
 
     def _add_transcription_annotations(self, canvas, response):
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -122,6 +141,51 @@ class ManifestHTRBuilder:
         return manifest
 
 
+class ManifestAnnotationsBuilder:
+    """
+    Transcribes every canvas of a manifest and returns the results as plain
+    data (one {"reasoning": [...], "transcribing": [...]} entry per canvas)
+    instead of writing IIIF annotations onto the manifest itself. Used to
+    populate an Archipelago AMI `annotations` column.
+    """
+    def __init__(self, manifest: Manifest, new_id=None):
+        self.manifest_data = manifest
+        self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
+        self.model = None
+
+    def _convert_if_v2(self):
+        if '@id' in self.manifest_data:
+            converter = IIIFv2tov3Converter(
+                v2_manifest=self.manifest_data,
+                manifest_id=self.new_id,
+            )
+            self.manifest_data = converter.convert()
+
+    def build_annotations(self):
+        self._convert_if_v2()
+        manifest = Manifest(**self.manifest_data)
+        entries = []
+        for i, canvas in enumerate(tqdm(manifest.items, leave=False)):
+            try:
+                transcriber = _create_transcriber(canvas)
+                self.model = transcriber.model
+                image = _get_image_url(canvas)
+                api_response = transcriber.transcribe(image)
+                response = transcriber.get_response_dict(api_response)
+                entries.append({
+                    "reasoning": [
+                        {"value": response['thought_process'], "mime_type": "text/markdown"}
+                    ],
+                    "transcribing": [
+                        {"value": f"<span>{response['transcription']}</span>", "mime_type": "text/html"}
+                    ],
+                })
+            except Exception as e:
+                print(f"\nError processing canvas {i} ({canvas.id}): {e}")
+                print(f"Skipping this canvas and continuing...")
+        return entries
+
+
 def load_manifest(path: str):
     """Load a manifest from a URL or local file path."""
     if path.startswith("https"):
@@ -157,6 +221,64 @@ def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool, with
     builder = ManifestHTRBuilder(json_data, new_id=new_id, nuke_tamu=is_tamu, with_coords=with_coords)
     manifest = builder.build_htr()
     write_manifest(manifest, output)
+
+
+def _read_csv_rows(path: str):
+    with open(path, newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        return list(reader.fieldnames), list(reader)
+
+
+def _write_ami_csv(path: str, fieldnames: list, rows: list):
+    with open(path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+@cli.command("csv", help="Transcribe the manifests listed in a CSV and write an Archipelago AMI CSV")
+@click.option("--path", "-p", help="Path to the input CSV; must have a 'manifest' column")
+@click.option("--output", "-o", help="The output AMI CSV path", default="htr_ami_output.csv")
+def transcribe_csv(path: str, output: str) -> None:
+    fieldnames, input_rows = _read_csv_rows(path)
+    if "manifest" not in fieldnames:
+        raise click.ClickException("Input CSV must have a 'manifest' column")
+
+    output_fieldnames = [c for c in fieldnames if c != "manifest"] + ["generative_ai_details", "annotations"]
+
+    output_rows = []
+    done = set()
+    if os.path.exists(output):
+        _, existing_rows = _read_csv_rows(output)
+        for row in existing_rows:
+            output_rows.append(row)
+            done.add(row.get("node_uuid") or row.get("label"))
+
+    for row in tqdm(input_rows):
+        key = row.get("node_uuid") or row.get("label")
+        if key in done:
+            continue
+        try:
+            manifest_data = load_manifest(row["manifest"])
+            builder = ManifestAnnotationsBuilder(manifest_data)
+            entries = builder.build_annotations()
+        except Exception as e:
+            print(f"\nError processing manifest {row.get('manifest')}: {e}")
+            print(f"Skipping this row and continuing...")
+            continue
+
+        new_row = {k: v for k, v in row.items() if k != "manifest"}
+        new_row["generative_ai_details"] = safe_json({
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "model": builder.model or "gemini-3.1-pro-preview",
+            "generator": f"iiif-paleography/@v{__version__}",
+        })
+        new_row["annotations"] = safe_json(entries)
+        output_rows.append(new_row)
+        done.add(key)
+        _write_ami_csv(output, output_fieldnames, output_rows)
+
+    print(f"AMI CSV written to {output}")
 
 
 @cli.command("list", help="Transcribe a list of IIIF Manifests")

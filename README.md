@@ -57,6 +57,21 @@ Or update a manifest on disk:
 iiif-transcribe manifest -p fixtures/manifest.json -o "fixtures/mcinnis-241.json" -n "https://tamulib-dc-labs.github.io/custom-iiif-manifests/manifests/mcinnis-241.json" 
 ```
 
+Generate an Archipelago AMI-ready CSV from a CSV of manifests. The input CSV needs
+a `manifest` column (a URL or local path to a IIIF manifest); every other column
+is copied through as-is. The output CSV drops `manifest` and adds
+`generative_ai_details` (when it ran, the model used, and the app version) and
+`annotations` (the reasoning and transcription for each canvas), both JSON-encoded
+using the `"`-escaped serialization Archipelago's PHP CSV parser requires:
+
+```bash
+iiif-transcribe csv -p htrami_input.csv -o htr_ami_output.csv
+```
+
+The command is resume-safe: if `--output` already exists, rows already present
+(matched by `node_uuid`, falling back to `label`) are skipped and the file is
+rewritten after every new row, so an interrupted run can just be restarted.
+
 Or run the transcriber directly:
 
 ```bash
