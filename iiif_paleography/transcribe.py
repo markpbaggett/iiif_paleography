@@ -148,9 +148,9 @@ TRANSCRIBING_PREFIX = "<span><b>Transcription:</b><br/><br/>\n"
 class ManifestAnnotationsBuilder:
     """
     Transcribes every canvas of a manifest and returns the results as plain
-    data (one {"reasoning": [...], "transcribing": [...]} entry per canvas)
-    instead of writing IIIF annotations onto the manifest itself. Used to
-    populate an Archipelago AMI `annotations` column.
+    data: a single {"transcribing": [...], "reasoning": [...]} entry for the
+    whole work, with one item per canvas (in canvas order) in each array.
+    Used to populate an Archipelago AMI `annotations` column.
     """
     def __init__(self, manifest: Manifest, new_id=None):
         self.manifest_data = manifest
@@ -168,7 +168,8 @@ class ManifestAnnotationsBuilder:
     def build_annotations(self):
         self._convert_if_v2()
         manifest = Manifest(**self.manifest_data)
-        entries = []
+        transcribing_items = []
+        reasoning_items = []
         for i, canvas in enumerate(tqdm(manifest.items, leave=False)):
             try:
                 transcriber = _create_transcriber(canvas)
@@ -176,18 +177,16 @@ class ManifestAnnotationsBuilder:
                 image = _get_image_url(canvas)
                 api_response = transcriber.transcribe(image)
                 response = transcriber.get_response_dict(api_response)
-                entries.append({
-                    "reasoning": [
-                        {"value": REASONING_PREFIX + response['thought_process'], "mime_type": "text/markdown"}
-                    ],
-                    "transcribing": [
-                        {"value": TRANSCRIBING_PREFIX + response['transcription'] + "</span>", "mime_type": "text/html"}
-                    ],
-                })
+                reasoning_items.append(
+                    {"value": REASONING_PREFIX + response['thought_process'], "mime_type": "text/markdown"}
+                )
+                transcribing_items.append(
+                    {"value": TRANSCRIBING_PREFIX + response['transcription'] + "</span>", "mime_type": "text/html"}
+                )
             except Exception as e:
                 print(f"\nError processing canvas {i} ({canvas.id}): {e}")
                 print(f"Skipping this canvas and continuing...")
-        return entries
+        return [{"transcribing": transcribing_items, "reasoning": reasoning_items}]
 
 
 def load_manifest(path: str):
