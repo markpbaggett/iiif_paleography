@@ -13,15 +13,19 @@ from toon_format import decode
 from datetime import datetime, timezone
 
 
-def _create_transcriber(canvas, with_coords=False):
+DEFAULT_MODEL = "gemini-3.1-pro-preview"
+
+
+def _create_transcriber(canvas, with_coords=False, model=None):
+    model = model or DEFAULT_MODEL
     if with_coords:
         width = str(canvas.items[0].items[0].body.width)
         height = str(canvas.items[0].items[0].body.height)
         return GeminiTranscriber(
             prompt_path='prompts/gemini-htr-and-coords.md',
-            width=width, height=height
+            width=width, height=height, model=model,
         )
-    return GeminiTranscriber()
+    return GeminiTranscriber(model=model)
 
 
 def _get_image_url(canvas, with_coords=False):
@@ -41,12 +45,13 @@ def safe_json(obj):
 
 class ManifestHTRBuilder:
     def __init__(self, manifest: Manifest, new_id=None, new_base="https://example.org",
-                 nuke_tamu=False, with_coords=False):
+                 nuke_tamu=False, with_coords=False, model=None):
         self.manifest_data = manifest
         self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
         self.new_base = new_base
         self.nuke = nuke_tamu
         self.with_coords = with_coords
+        self.model = model or DEFAULT_MODEL
 
     def _convert_if_v2(self):
         if '@id' in self.manifest_data:
@@ -57,7 +62,7 @@ class ManifestHTRBuilder:
             self.manifest_data = converter.convert()
 
     def _create_transcriber(self, canvas):
-        return _create_transcriber(canvas, with_coords=self.with_coords)
+        return _create_transcriber(canvas, with_coords=self.with_coords, model=self.model)
 
     def _get_image_url(self, canvas):
         return _get_image_url(canvas, with_coords=self.with_coords)
@@ -70,7 +75,7 @@ class ManifestHTRBuilder:
                 canvas.make_annotation(
                     motivation="tagging",
                     purpose="transcribing",
-                    creator="gemini-3.1-pro-preview",
+                    creator=self.model,
                     created=timestamp,
                     generator="iiif-paleography@v0.1.0",
                     generated=timestamp,
@@ -87,7 +92,7 @@ class ManifestHTRBuilder:
             canvas.make_annotation(
                 motivation="transcribing",
                 purpose="transcribing",
-                creator="gemini-3.1-pro-preview",
+                creator=self.model,
                 created=timestamp,
                 generator="iiif-paleography@v0.1.0",
                 generated=timestamp,
@@ -123,7 +128,7 @@ class ManifestHTRBuilder:
                 canvas.make_annotation(
                     motivation="commenting",
                     purpose="transcribing",
-                    creator="gemini-3.1-pro-preview",
+                    creator=self.model,
                     created=timestamp,
                     generator="iiif-paleography@v0.1.0",
                     generated=timestamp,
@@ -152,10 +157,10 @@ class ManifestAnnotationsBuilder:
     whole work, with one item per canvas (in canvas order) in each array.
     Used to populate an Archipelago AMI `annotations` column.
     """
-    def __init__(self, manifest: Manifest, new_id=None):
+    def __init__(self, manifest: Manifest, new_id=None, model=None):
         self.manifest_data = manifest
         self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
-        self.model = None
+        self.model = model or DEFAULT_MODEL
 
     def _convert_if_v2(self):
         if '@id' in self.manifest_data:
@@ -172,8 +177,7 @@ class ManifestAnnotationsBuilder:
         reasoning_items = []
         for i, canvas in enumerate(tqdm(manifest.items, leave=False)):
             try:
-                transcriber = _create_transcriber(canvas)
-                self.model = transcriber.model
+                transcriber = _create_transcriber(canvas, model=self.model)
                 image = _get_image_url(canvas)
                 api_response = transcriber.transcribe(image)
                 response = transcriber.get_response_dict(api_response)
@@ -219,9 +223,10 @@ def cli() -> None:
 @click.option("--new_id", "-n", help="A new identifier for your manifest")
 @click.option("--is_tamu", "-t", is_flag=True, help="Whether the manifest is from TAMU and needs to get gross stuff purged")
 @click.option("--with_coords", "-c", is_flag=True, help="Include coordinate annotations")
-def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool, with_coords: bool) -> None:
+@click.option("--model", "-m", default=None, help=f"Gemini model to use (default: {DEFAULT_MODEL}), e.g. gemini-3.5-flash")
+def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool, with_coords: bool, model: str) -> None:
     json_data = load_manifest(path)
-    builder = ManifestHTRBuilder(json_data, new_id=new_id, nuke_tamu=is_tamu, with_coords=with_coords)
+    builder = ManifestHTRBuilder(json_data, new_id=new_id, nuke_tamu=is_tamu, with_coords=with_coords, model=model)
     manifest = builder.build_htr()
     write_manifest(manifest, output)
 
@@ -242,7 +247,8 @@ def _write_ami_csv(path: str, fieldnames: list, rows: list):
 @cli.command("csv", help="Transcribe the manifests listed in a CSV and write an Archipelago AMI CSV")
 @click.option("--path", "-p", help="Path to the input CSV; must have a 'manifest' column")
 @click.option("--output", "-o", help="The output AMI CSV path", default="htr_ami_output.csv")
-def transcribe_csv(path: str, output: str) -> None:
+@click.option("--model", "-m", default=None, help=f"Gemini model to use (default: {DEFAULT_MODEL}), e.g. gemini-3.5-flash")
+def transcribe_csv(path: str, output: str, model: str) -> None:
     fieldnames, input_rows = _read_csv_rows(path)
     if "manifest" not in fieldnames:
         raise click.ClickException("Input CSV must have a 'manifest' column")
@@ -263,7 +269,7 @@ def transcribe_csv(path: str, output: str) -> None:
             continue
         try:
             manifest_data = load_manifest(row["manifest"])
-            builder = ManifestAnnotationsBuilder(manifest_data)
+            builder = ManifestAnnotationsBuilder(manifest_data, model=model)
             entries = builder.build_annotations()
         except Exception as e:
             print(f"\nError processing manifest {row.get('manifest')}: {e}")
@@ -273,7 +279,7 @@ def transcribe_csv(path: str, output: str) -> None:
         new_row = {k: v for k, v in row.items() if k != "manifest"}
         new_row["generative_ai_details"] = safe_json({
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-            "model": builder.model or "gemini-3.1-pro-preview",
+            "model": builder.model,
             "generator": f"iiif-paleography/@v{__version__}",
         })
         new_row["annotations"] = safe_json(entries)
@@ -289,7 +295,8 @@ def transcribe_csv(path: str, output: str) -> None:
 @click.option("--output", "-o", help="The output directory path to write each json", default="output")
 @click.option("--is_tamu", "-t", is_flag=True, help="Whether the manifest is from TAMU and needs to get gross stuff purged")
 @click.option("--with_coords", "-c", is_flag=True, help="Include coordinate annotations")
-def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool) -> None:
+@click.option("--model", "-m", default=None, help=f"Gemini model to use (default: {DEFAULT_MODEL}), e.g. gemini-3.5-flash")
+def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool, model: str) -> None:
     all_ids = []
     with open(path, 'r') as f:
         for line in f:
@@ -309,6 +316,7 @@ def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool) ->
                 new_id=f"https://tamulib-dc-labs.github.io/custom-iiif-manifests/manifests/mcinnis/mcinnis-{id}.json",
                 nuke_tamu=is_tamu,
                 with_coords=with_coords,
+                model=model,
             )
             manifest = builder.build_htr()
             write_manifest(manifest, str(output_path))

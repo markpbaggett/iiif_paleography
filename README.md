@@ -72,6 +72,14 @@ The command is resume-safe: if `--output` already exists, rows already present
 (matched by `node_uuid`, falling back to `label`) are skipped and the file is
 rewritten after every new row, so an interrupted run can just be restarted.
 
+Every command (`manifest`, `list`, `csv`) accepts `--model`/`-m` to pick the Gemini
+model, defaulting to `gemini-3.1-pro-preview`. Pass a faster/cheaper alternative
+like `gemini-3.5-flash`:
+
+```bash
+iiif-transcribe csv -p htrami_input.csv -o htr_ami_output.csv --model gemini-3.5-flash
+```
+
 Or run the transcriber directly:
 
 ```bash
