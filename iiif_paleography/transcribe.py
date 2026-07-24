@@ -1,6 +1,7 @@
 from iiif_prezi3 import Manifest
 from iiif_paleography import __version__
 from iiif_paleography.gemini import GeminiTranscriber
+from iiif_paleography.tamu_chat import TamuChatTranscriber
 from iiif_paleography.iiif import IIIFv2tov3Converter
 import json
 import csv
@@ -14,18 +15,18 @@ from datetime import datetime, timezone
 
 
 DEFAULT_MODEL = "gemini-3.1-pro-preview"
+PROVIDERS = {"google": GeminiTranscriber, "tamu": TamuChatTranscriber}
 
 
-def _create_transcriber(canvas, with_coords=False, model=None):
+def _create_transcriber(canvas, with_coords=False, model=None, provider="google"):
     model = model or DEFAULT_MODEL
+    transcriber_cls = PROVIDERS[provider]
+    kwargs = {"model": model}
     if with_coords:
-        width = str(canvas.items[0].items[0].body.width)
-        height = str(canvas.items[0].items[0].body.height)
-        return GeminiTranscriber(
-            prompt_path='prompts/gemini-htr-and-coords.md',
-            width=width, height=height, model=model,
-        )
-    return GeminiTranscriber(model=model)
+        kwargs["prompt_path"] = 'prompts/gemini-htr-and-coords.md'
+        kwargs["width"] = str(canvas.items[0].items[0].body.width)
+        kwargs["height"] = str(canvas.items[0].items[0].body.height)
+    return transcriber_cls(**kwargs)
 
 
 def _get_image_url(canvas, with_coords=False):
@@ -45,13 +46,14 @@ def safe_json(obj):
 
 class ManifestHTRBuilder:
     def __init__(self, manifest: Manifest, new_id=None, new_base="https://example.org",
-                 nuke_tamu=False, with_coords=False, model=None):
+                 nuke_tamu=False, with_coords=False, model=None, provider="google"):
         self.manifest_data = manifest
         self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
         self.new_base = new_base
         self.nuke = nuke_tamu
         self.with_coords = with_coords
         self.model = model or DEFAULT_MODEL
+        self.provider = provider
 
     def _convert_if_v2(self):
         if '@id' in self.manifest_data:
@@ -62,7 +64,7 @@ class ManifestHTRBuilder:
             self.manifest_data = converter.convert()
 
     def _create_transcriber(self, canvas):
-        return _create_transcriber(canvas, with_coords=self.with_coords, model=self.model)
+        return _create_transcriber(canvas, with_coords=self.with_coords, model=self.model, provider=self.provider)
 
     def _get_image_url(self, canvas):
         return _get_image_url(canvas, with_coords=self.with_coords)
@@ -157,10 +159,11 @@ class ManifestAnnotationsBuilder:
     whole work, with one item per canvas (in canvas order) in each array.
     Used to populate an Archipelago AMI `annotations` column.
     """
-    def __init__(self, manifest: Manifest, new_id=None, model=None):
+    def __init__(self, manifest: Manifest, new_id=None, model=None, provider="google"):
         self.manifest_data = manifest
         self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
         self.model = model or DEFAULT_MODEL
+        self.provider = provider
 
     def _convert_if_v2(self):
         if '@id' in self.manifest_data:
@@ -177,7 +180,7 @@ class ManifestAnnotationsBuilder:
         reasoning_items = []
         for i, canvas in enumerate(tqdm(manifest.items, leave=False)):
             try:
-                transcriber = _create_transcriber(canvas, model=self.model)
+                transcriber = _create_transcriber(canvas, model=self.model, provider=self.provider)
                 image = _get_image_url(canvas)
                 api_response = transcriber.transcribe(image)
                 response = transcriber.get_response_dict(api_response)
@@ -224,9 +227,12 @@ def cli() -> None:
 @click.option("--is_tamu", "-t", is_flag=True, help="Whether the manifest is from TAMU and needs to get gross stuff purged")
 @click.option("--with_coords", "-c", is_flag=True, help="Include coordinate annotations")
 @click.option("--model", "-m", default=None, help=f"Gemini model to use (default: {DEFAULT_MODEL}), e.g. gemini-3.5-flash")
-def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool, with_coords: bool, model: str) -> None:
+@click.option("--provider", "-P", type=click.Choice(list(PROVIDERS.keys())), default="google",
+              help="Where to run the model: 'google' calls the Gemini API directly; "
+                   "'tamu' routes through TAMUS AI Chat (needs TAMUS_AI_CHAT_API_KEY)")
+def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool, with_coords: bool, model: str, provider: str) -> None:
     json_data = load_manifest(path)
-    builder = ManifestHTRBuilder(json_data, new_id=new_id, nuke_tamu=is_tamu, with_coords=with_coords, model=model)
+    builder = ManifestHTRBuilder(json_data, new_id=new_id, nuke_tamu=is_tamu, with_coords=with_coords, model=model, provider=provider)
     manifest = builder.build_htr()
     write_manifest(manifest, output)
 
@@ -248,7 +254,10 @@ def _write_ami_csv(path: str, fieldnames: list, rows: list):
 @click.option("--path", "-p", help="Path to the input CSV; must have a 'manifest' column")
 @click.option("--output", "-o", help="The output AMI CSV path", default="htr_ami_output.csv")
 @click.option("--model", "-m", default=None, help=f"Gemini model to use (default: {DEFAULT_MODEL}), e.g. gemini-3.5-flash")
-def transcribe_csv(path: str, output: str, model: str) -> None:
+@click.option("--provider", "-P", type=click.Choice(list(PROVIDERS.keys())), default="google",
+              help="Where to run the model: 'google' calls the Gemini API directly; "
+                   "'tamu' routes through TAMUS AI Chat (needs TAMUS_AI_CHAT_API_KEY)")
+def transcribe_csv(path: str, output: str, model: str, provider: str) -> None:
     fieldnames, input_rows = _read_csv_rows(path)
     if "manifest" not in fieldnames:
         raise click.ClickException("Input CSV must have a 'manifest' column")
@@ -269,7 +278,7 @@ def transcribe_csv(path: str, output: str, model: str) -> None:
             continue
         try:
             manifest_data = load_manifest(row["manifest"])
-            builder = ManifestAnnotationsBuilder(manifest_data, model=model)
+            builder = ManifestAnnotationsBuilder(manifest_data, model=model, provider=provider)
             entries = builder.build_annotations()
         except Exception as e:
             print(f"\nError processing manifest {row.get('manifest')}: {e}")
@@ -280,6 +289,7 @@ def transcribe_csv(path: str, output: str, model: str) -> None:
         new_row["generative_ai_details"] = safe_json({
             "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             "model": builder.model,
+            "provider": builder.provider,
             "generator": f"iiif-paleography/@v{__version__}",
         })
         new_row["annotations"] = safe_json(entries)
@@ -296,7 +306,10 @@ def transcribe_csv(path: str, output: str, model: str) -> None:
 @click.option("--is_tamu", "-t", is_flag=True, help="Whether the manifest is from TAMU and needs to get gross stuff purged")
 @click.option("--with_coords", "-c", is_flag=True, help="Include coordinate annotations")
 @click.option("--model", "-m", default=None, help=f"Gemini model to use (default: {DEFAULT_MODEL}), e.g. gemini-3.5-flash")
-def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool, model: str) -> None:
+@click.option("--provider", "-P", type=click.Choice(list(PROVIDERS.keys())), default="google",
+              help="Where to run the model: 'google' calls the Gemini API directly; "
+                   "'tamu' routes through TAMUS AI Chat (needs TAMUS_AI_CHAT_API_KEY)")
+def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool, model: str, provider: str) -> None:
     all_ids = []
     with open(path, 'r') as f:
         for line in f:
@@ -317,6 +330,7 @@ def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool, mo
                 nuke_tamu=is_tamu,
                 with_coords=with_coords,
                 model=model,
+                provider=provider,
             )
             manifest = builder.build_htr()
             write_manifest(manifest, str(output_path))

@@ -80,6 +80,19 @@ like `gemini-3.5-flash`:
 iiif-transcribe csv -p htrami_input.csv -o htr_ami_output.csv --model gemini-3.5-flash
 ```
 
+Every command also accepts `--provider`/`-P` (`google`, the default, or `tamu`) to route the same
+model through [TAMUS AI Chat](https://docs.tamus.ai/docs/prod/api-tool/) instead of Google's API
+directly, which draws from TAMUS AI Chat's free daily token allowance instead of billing a Gemini
+API key:
+
+```bash
+export TAMUS_AI_CHAT_API_KEY="your-tamus-ai-chat-api-key"
+iiif-transcribe csv -p htrami_input.csv -o htr_ami_output.csv --model gemini-3.5-flash --provider tamu
+```
+
+See [Configuration](#configuration) below for how to get a `TAMUS_AI_CHAT_API_KEY`, and the caveats
+on `--provider tamu` (namespaced model ids, reasoning text may come back empty).
+
 Or run the transcriber directly:
 
 ```bash
@@ -132,6 +145,29 @@ Set your Gemini API key as an environment variable:
 ```bash
 export GEMINI_KEY="your-api-key-here"
 ```
+
+For `--provider tamu`, set your [TAMUS AI Chat](https://docs.tamus.ai/docs/prod/api-tool/) API key
+instead (get one by following [Create and Test API Key](https://docs.tamus.ai/docs/prod/api-tool/create-and-test-api-key),
+which needs your TAMU institutional login):
+
+```bash
+export TAMUS_AI_CHAT_API_KEY="your-tamus-ai-chat-api-key"
+# Optional: override the per-institution endpoint (defaults to Texas A&M's, chat-api.tamu.ai)
+export TAMUS_AI_CHAT_API_ENDPOINT="https://chat-api.tamu.ai"
+```
+
+`TAMU_CHAT` also works as the API key variable, if that's what you already have it set to.
+
+**Caveats on `--provider tamu`** (this integration is built from TAMUS AI Chat's docs, not tested
+against a live key — smoke-test before trusting it for a real batch):
+
+- Model ids on TAMUS AI Chat are namespaced (e.g. `protected.gemini-3.5-flash`); a bare `--model`
+  value gets `protected.` prefixed automatically. Confirm the exact id for a given model with
+  `GET {endpoint}/api/models` if a run fails with a model-not-found error.
+- TAMUS AI Chat's own FAQ states only Claude models show a visible "thinking" trace in their UI.
+  It's unconfirmed whether Gemini routed through the gateway returns separate reasoning content
+  over the API. If it doesn't, `thought_process` comes back empty and the `reasoning` annotation
+  ends up as just the `REASONING_PREFIX` header with no body — transcription itself is unaffected.
 
 ## Notes
 
