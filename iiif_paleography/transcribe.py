@@ -204,7 +204,14 @@ class ManifestAnnotationsBuilder:
                 )
             except Exception as e:
                 print(f"\nError processing canvas {i} ({canvas.id}): {e}")
-                print(f"Skipping this canvas and continuing...")
+                print(f"Inserting an error placeholder for this canvas and continuing...")
+                error_note = f"_Error transcribing this canvas: {e}_"
+                reasoning_items.append(
+                    {"value": REASONING_PREFIX + error_note, "mime_type": "text/markdown"}
+                )
+                transcribing_items.append(
+                    {"value": TRANSCRIBING_PREFIX + error_note + "</span>", "mime_type": "text/html"}
+                )
         return [{"transcribing": transcribing_items, "reasoning": reasoning_items}]
 
 
