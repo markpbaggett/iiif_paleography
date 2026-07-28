@@ -17,29 +17,30 @@ class TamuChatTranscriber:
     Same transcribe()/get_response_dict() interface as GeminiTranscriber so
     it's a drop-in replacement.
 
-    Caveats (unverified -- built from docs text, not a live test against a
-    real API key):
-      * Model ids on TAMUS AI Chat are namespaced (the docs' only example is
-        "protected.gemini-2.5-flash-lite"); a bare model name is prefixed
-        with "protected." here. Confirm the exact id for your model via
-        GET {endpoint}/api/models before relying on it.
-      * TAMUS AI Chat's own FAQ says only Claude models show a visible
-        "thinking" trace in the UI. It's unconfirmed whether Gemini routed
-        through this gateway returns separate reasoning content over the
-        API the way Google's native API does with `thinking_config`. This
-        client looks for `reasoning_content`/`reasoning` on the response
-        message and leaves `thought_process` empty if neither is present,
-        rather than guessing.
+    Gemini's thinking trace is billed (reasoning tokens show up in the usage
+    block) even when not requested, but chat-api.tamu.ai only puts it in the
+    response when the request includes `reasoning_effort` ("low"/"medium"/
+    "high") -- confirmed via TAMU's own testing. Without it, `reasoning_content`
+    comes back empty even though the model reasoned. This client always sends
+    `reasoning_effort` (see `reasoning_effort` param) and reads the trace back
+    from `reasoning_content` (falling back to `reasoning` for other proxies).
+
+    Caveat: model ids on TAMUS AI Chat are namespaced (e.g.
+    "protected.gemini-3.5-flash"); a bare model name is prefixed with
+    "protected." here. Confirm the exact id for your model via
+    GET {endpoint}/api/models if a run 404s/400s on the model.
     """
 
     def __init__(self, api_key=None, endpoint=None, model="gemini-3.5-flash",
-                 prompt_path='prompts/gemini-htr.md', width=None, height=None):
+                 prompt_path='prompts/gemini-htr.md', width=None, height=None,
+                 reasoning_effort="medium"):
         self.width = width
         self.height = height
         self.api_key = api_key or os.getenv("TAMUS_AI_CHAT_API_KEY") or os.getenv("TAMU_CHAT")
         self.endpoint = (endpoint or os.getenv("TAMUS_AI_CHAT_API_ENDPOINT") or DEFAULT_ENDPOINT).rstrip('/')
         self.model = model if model.startswith("protected.") else f"protected.{model}"
         self.prompt_path = prompt_path
+        self.reasoning_effort = reasoning_effort
         self.prompt = self._load_prompt()
 
     def _load_prompt(self):
@@ -73,9 +74,9 @@ class TamuChatTranscriber:
         Args:
             image_path: Path to the image file or URL to a remote image.
             temperature: Temperature for generation.
-            include_thoughts: Unused -- kept for interface parity with
-                GeminiTranscriber; TAMUS AI Chat's reasoning-trace support
-                (if any) isn't a request-time toggle in the documented API.
+            include_thoughts: Whether to ask for a reasoning trace back (sends
+                `reasoning_effort`). Without this, chat-api.tamu.ai returns an
+                empty `reasoning_content` even though the model still reasons.
 
         Returns:
             The parsed JSON response body (dict).
@@ -105,6 +106,8 @@ class TamuChatTranscriber:
                 },
             ],
         }
+        if include_thoughts:
+            payload["reasoning_effort"] = self.reasoning_effort
 
         response = requests.post(
             f"{self.endpoint}/api/chat/completions",

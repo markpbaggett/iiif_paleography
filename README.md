@@ -90,8 +90,8 @@ export TAMUS_AI_CHAT_API_KEY="your-tamus-ai-chat-api-key"
 iiif-transcribe csv -p htrami_input.csv -o htr_ami_output.csv --model gemini-3.5-flash --provider tamu
 ```
 
-See [Configuration](#configuration) below for how to get a `TAMUS_AI_CHAT_API_KEY`, and the caveats
-on `--provider tamu` (namespaced model ids, reasoning text may come back empty).
+See [Configuration](#configuration) below for how to get a `TAMUS_AI_CHAT_API_KEY`, and the one
+remaining caveat on `--provider tamu` (namespaced model ids).
 
 Or run the transcriber directly:
 
@@ -158,16 +158,18 @@ export TAMUS_AI_CHAT_API_ENDPOINT="https://chat-api.tamu.ai"
 
 `TAMU_CHAT` also works as the API key variable, if that's what you already have it set to.
 
-**Caveats on `--provider tamu`** (this integration is built from TAMUS AI Chat's docs, not tested
-against a live key — smoke-test before trusting it for a real batch):
+**Reasoning trace via `--provider tamu`**: chat-api.tamu.ai only returns Gemini's thinking trace
+(in `reasoning_content`) when the request includes `reasoning_effort` — Gemini still reasons
+without it (reasoning tokens are billed either way), the trace just isn't surfaced. This client
+always sends `reasoning_effort="medium"`, so `annotations.reasoning` is populated the same as with
+`--provider google`. If a canvas still comes back with an empty trace (e.g. the endpoint or model
+doesn't support it), `reasoning` falls back to a plain "no reasoning trace was returned" note
+instead of an empty/misleading value — the transcription itself is unaffected either way.
 
-- Model ids on TAMUS AI Chat are namespaced (e.g. `protected.gemini-3.5-flash`); a bare `--model`
-  value gets `protected.` prefixed automatically. Confirm the exact id for a given model with
-  `GET {endpoint}/api/models` if a run fails with a model-not-found error.
-- TAMUS AI Chat's own FAQ states only Claude models show a visible "thinking" trace in their UI.
-  It's unconfirmed whether Gemini routed through the gateway returns separate reasoning content
-  over the API. If it doesn't, `thought_process` comes back empty and the `reasoning` annotation
-  ends up as just the `REASONING_PREFIX` header with no body — transcription itself is unaffected.
+**Other caveat on `--provider tamu`**: model ids on TAMUS AI Chat are namespaced (e.g.
+`protected.gemini-3.5-flash`); a bare `--model` value gets `protected.` prefixed automatically.
+Confirm the exact id for a given model with `GET {endpoint}/api/models` if a run fails with a
+model-not-found error.
 
 ## Notes
 

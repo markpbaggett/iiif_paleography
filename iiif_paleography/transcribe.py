@@ -17,16 +17,7 @@ from datetime import datetime, timezone
 DEFAULT_MODEL = "gemini-3.1-pro-preview"
 PROVIDERS = {"google": GeminiTranscriber, "tamu": TamuChatTranscriber}
 
-NO_REASONING_NOTE = {
-    "tamu": (
-        "_No reasoning trace was returned for this canvas._ TAMUS AI Chat's "
-        "gateway currently only surfaces a model's \"thinking\" output for "
-        "Claude models; Gemini models routed through TAMU (`--provider tamu`) "
-        "return only the final transcription. Use `--provider google` to get "
-        "Gemini's reasoning trace directly from the Gemini API."
-    ),
-    "google": "_No reasoning trace was returned for this canvas._",
-}
+NO_REASONING_NOTE = "_No reasoning trace was returned for this canvas._"
 
 
 def _create_transcriber(canvas, with_coords=False, model=None, provider="google"):
@@ -149,7 +140,7 @@ class ManifestHTRBuilder:
                         "type": "TextualBody",
                         "language": "none",
                         "format": "text/markdown",
-                        "value": response['thought_process'] or NO_REASONING_NOTE[self.provider]
+                        "value": response['thought_process'] or NO_REASONING_NOTE
                     },
                     target=canvas.id,
                 )
@@ -195,7 +186,7 @@ class ManifestAnnotationsBuilder:
                 image = _get_image_url(canvas)
                 api_response = transcriber.transcribe(image)
                 response = transcriber.get_response_dict(api_response)
-                thought_process = response['thought_process'] or NO_REASONING_NOTE[self.provider]
+                thought_process = response['thought_process'] or NO_REASONING_NOTE
                 reasoning_items.append(
                     {"value": REASONING_PREFIX + thought_process, "mime_type": "text/markdown"}
                 )
