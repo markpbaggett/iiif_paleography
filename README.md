@@ -80,18 +80,58 @@ like `gemini-3.5-flash`:
 iiif-transcribe csv -p htrami_input.csv -o htr_ami_output.csv --model gemini-3.5-flash
 ```
 
-Every command also accepts `--provider`/`-P` (`google`, the default, or `tamu`) to route the same
-model through [TAMUS AI Chat](https://docs.tamus.ai/docs/prod/api-tool/) instead of Google's API
-directly, which draws from TAMUS AI Chat's free daily token allowance instead of billing a Gemini
-API key:
+Every command also accepts `--provider`/`-P` to route the same request somewhere other than
+Google's API:
+
+| `--provider` | Where it runs | Auth | Models |
+| --- | --- | --- | --- |
+| `google` (default) | Google Gemini API directly | `GEMINI_KEY` (billed) | Gemini only |
+| `tamu` | [TAMUS AI Chat](https://docs.tamus.ai/docs/prod/api-tool/) | `TAMUS_AI_CHAT_API_KEY` — free daily token allowance | Gemini (namespaced `protected.*`) |
+| `tamu-gateway` | [TAMUS AI Gateway](https://docs.tamus.ai/api-services/gateway/) | `TAMUS_AI_FRAMEWORK_API_KEY` + Cloudflare WARP | Anything the Gateway lists — Anthropic Claude, Gemini, OpenAI GPT, etc. |
 
 ```bash
 export TAMUS_AI_CHAT_API_KEY="your-tamus-ai-chat-api-key"
 iiif-transcribe csv -p htrami_input.csv -o htr_ami_output.csv --model gemini-3.5-flash --provider tamu
 ```
 
-See [Configuration](#configuration) below for how to get a `TAMUS_AI_CHAT_API_KEY`, and the one
-remaining caveat on `--provider tamu` (namespaced model ids).
+#### `--provider tamu-gateway`
+
+The [TAMUS AI Gateway](https://docs.tamus.ai/api-services/gateway/) is a separate service from
+TAMUS AI Chat. It exposes every upstream provider's real API through one endpoint, has a much
+larger token allowance, and — because it's not Gemini-only — lets you transcribe with **Anthropic
+Claude, OpenAI GPT, or Gemini** models. Real authentication is handled by Cloudflare One / WARP
+(which must be installed, connected to the `tamucs` team, and re-authenticated every 24h); the
+"API key" is just your NetID or billing-group name and is not secret.
+
+```bash
+export TAMUS_AI_FRAMEWORK_API_KEY="your-netid-or-billing-group"
+# Optional: override the per-institution endpoint (defaults to Texas A&M's, gateway.api.tamu.ai)
+export TAMUS_AI_FRAMEWORK_API_ENDPOINT="https://gateway.api.tamu.ai"
+
+# Gemini 3.5 Flash through the Gateway
+iiif-transcribe csv -p htrami_input.csv -o htr_ami_output.csv -P tamu-gateway -m gemini-3.5-flash
+
+# ...or Claude Haiku 4.5 instead
+iiif-transcribe manifest -p fixtures/manifest.json -o out.json -P tamu-gateway -m claude-haiku-4-5
+```
+
+Pass the **bare `id`** from `GET {endpoint}/v1/models` as `--model` (e.g. `gemini-3.5-flash`,
+`claude-haiku-4-5`, `claude-sonnet-4-6`, `gpt-5.1`) — *not* the `bedrock_id`, and with no
+`protected.` prefix. There is no sensible default for this provider, so always pass `--model`.
+
+Because the Gateway gives you far more headroom, `tamu` and `tamu-gateway` also accept two knobs
+for spending it on deeper reasoning / longer output (ignored by `--provider google`):
+
+| Option | Meaning |
+| --- | --- |
+| `-r` / `--reasoning_effort` | `low` \| `medium` (default) \| `high` — how much chain-of-thought the model does |
+| `-x` / `--max_tokens` | Raise the response cap (reasoning + answer). Gateway limits: ~65K for Gemini, ~128K for Claude |
+
+```bash
+iiif-transcribe csv -p htrami_input.csv -o out.csv -P tamu-gateway -m gemini-3.5-flash -r high -x 32000
+```
+
+See [Configuration](#configuration) below for details and caveats on each provider.
 
 Or run the transcriber directly:
 
@@ -157,6 +197,32 @@ export TAMUS_AI_CHAT_API_ENDPOINT="https://chat-api.tamu.ai"
 ```
 
 `TAMU_CHAT` also works as the API key variable, if that's what you already have it set to.
+
+For `--provider tamu-gateway`, follow the [TAMUS AI Gateway setup](https://docs.tamus.ai/api-services/gateway/):
+install the [Cloudflare One client](https://developers.cloudflare.com/cloudflare-one/team-and-resources/devices/cloudflare-one-client/download/),
+connect it to team `tamucs`, then set your NetID or billing-group name as the key. This value is
+**not sensitive** — Cloudflare handles authentication, and the connection must be re-authenticated
+every 24h.
+
+```bash
+export TAMUS_AI_FRAMEWORK_API_KEY="your-netid-or-billing-group"
+# Optional: override the per-institution endpoint (defaults to Texas A&M's, gateway.api.tamu.ai)
+export TAMUS_AI_FRAMEWORK_API_ENDPOINT="https://gateway.api.tamu.ai"
+```
+
+List the available model ids (and check your usage at <https://report.api.tamu.ai/>):
+
+```bash
+curl -s "$TAMUS_AI_FRAMEWORK_API_ENDPOINT/v1/models" \
+  -H "Authorization: Bearer $TAMUS_AI_FRAMEWORK_API_KEY" | jq '.data[].id'
+```
+
+**Caveats on `--provider tamu-gateway`**: the Gateway has no `protected.` namespacing — pass the
+bare `id` and always pass `--model` (the Gemini default won't resolve). Reasoning-trace support
+depends on the chosen model: Gemini behaves like `--provider tamu` (trace in `reasoning_content`,
+`reasoning_effort` always sent); for Claude/GPT models the trace may not be surfaced, in which case
+`annotations.reasoning` falls back to the "no reasoning trace was returned" note and the
+transcription is unaffected.
 
 **Reasoning trace via `--provider tamu`**: chat-api.tamu.ai only returns Gemini's thinking trace
 (in `reasoning_content`) when the request includes `reasoning_effort` — Gemini still reasons

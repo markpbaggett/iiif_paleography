@@ -31,16 +31,29 @@ class TamuChatTranscriber:
     GET {endpoint}/api/models if a run 404s/400s on the model.
     """
 
+    # Overridable by subclasses that target a different TAMUS API surface.
+    DEFAULT_ENDPOINT = DEFAULT_ENDPOINT
+    CHAT_COMPLETIONS_PATH = "/api/chat/completions"
+    MODEL_PREFIX = "protected."
+    ENV_API_KEY = ("TAMUS_AI_CHAT_API_KEY", "TAMU_CHAT")
+    ENV_ENDPOINT = "TAMUS_AI_CHAT_API_ENDPOINT"
+
     def __init__(self, api_key=None, endpoint=None, model="gemini-3.5-flash",
                  prompt_path='prompts/gemini-htr.md', width=None, height=None,
-                 reasoning_effort="medium"):
+                 reasoning_effort="medium", max_tokens=None):
         self.width = width
         self.height = height
-        self.api_key = api_key or os.getenv("TAMUS_AI_CHAT_API_KEY") or os.getenv("TAMU_CHAT")
-        self.endpoint = (endpoint or os.getenv("TAMUS_AI_CHAT_API_ENDPOINT") or DEFAULT_ENDPOINT).rstrip('/')
-        self.model = model if model.startswith("protected.") else f"protected.{model}"
+        self.api_key = api_key or next(
+            (os.getenv(name) for name in self.ENV_API_KEY if os.getenv(name)), None
+        )
+        self.endpoint = (
+            endpoint or os.getenv(self.ENV_ENDPOINT) or self.DEFAULT_ENDPOINT
+        ).rstrip('/')
+        self.model = model if not self.MODEL_PREFIX or model.startswith(self.MODEL_PREFIX) \
+            else f"{self.MODEL_PREFIX}{model}"
         self.prompt_path = prompt_path
         self.reasoning_effort = reasoning_effort
+        self.max_tokens = max_tokens
         self.prompt = self._load_prompt()
 
     def _load_prompt(self):
@@ -106,19 +119,40 @@ class TamuChatTranscriber:
                 },
             ],
         }
+        if self.max_tokens:
+            payload["max_tokens"] = self.max_tokens
         if include_thoughts:
-            payload["reasoning_effort"] = self.reasoning_effort
+            thinking = self._thinking_payload()
+            # An explicit thinking config and `reasoning_effort` are mutually
+            # exclusive on some backends (the Gateway 400s on both) -- prefer the
+            # explicit one when a subclass provides it.
+            if thinking:
+                payload.update(thinking)
+            else:
+                payload["reasoning_effort"] = self.reasoning_effort
 
         response = requests.post(
-            f"{self.endpoint}/api/chat/completions",
+            f"{self.endpoint}{self.CHAT_COMPLETIONS_PATH}",
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
             },
             json=payload,
         )
-        response.raise_for_status()
+        if not response.ok:
+            raise requests.HTTPError(
+                f"{response.status_code} from {response.url}: {response.text}",
+                response=response,
+            )
         return response.json()
+
+    def _thinking_payload(self):
+        """
+        Extra request fields needed to get a *readable* reasoning trace back.
+        chat-api.tamu.ai surfaces it in `reasoning_content` from `reasoning_effort`
+        alone, so nothing extra is needed here. Subclasses override.
+        """
+        return {}
 
     def print_response(self, response):
         """Print the response in a formatted way."""
@@ -150,8 +184,22 @@ class TamuChatTranscriber:
             raise ValueError(f"No choices in response. Response: {response}")
 
         message = choices[0].get('message', {}) or {}
-        result['transcription'] = message.get('content') or ''
-        result['thought_process'] = message.get('reasoning_content') or message.get('reasoning') or ''
+        content = message.get('content') or ''
+        reasoning = message.get('reasoning_content') or message.get('reasoning') or ''
+
+        # Some proxies (e.g. the TAMUS AI Gateway with Gemini `include_thoughts`)
+        # don't populate `reasoning_content` -- they inline the thought summary at
+        # the front of `content` wrapped in <think>...</think>. Split it back out.
+        if not reasoning and '<think>' in content:
+            after_open = content.split('<think>', 1)[1]
+            if '</think>' in after_open:
+                reasoning, content = after_open.split('</think>', 1)
+            else:  # trace got truncated before the closing tag
+                reasoning, content = after_open, ''
+            reasoning, content = reasoning.strip(), content.strip()
+
+        result['transcription'] = content
+        result['thought_process'] = reasoning
 
         return result
 

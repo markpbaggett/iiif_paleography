@@ -2,6 +2,7 @@ from iiif_prezi3 import Manifest
 from iiif_paleography import __version__
 from iiif_paleography.gemini import GeminiTranscriber
 from iiif_paleography.tamu_chat import TamuChatTranscriber
+from iiif_paleography.tamu_gateway import TamuGatewayTranscriber
 from iiif_paleography.iiif import IIIFv2tov3Converter
 import json
 import csv
@@ -15,15 +16,25 @@ from datetime import datetime, timezone
 
 
 DEFAULT_MODEL = "gemini-3.1-pro-preview"
-PROVIDERS = {"google": GeminiTranscriber, "tamu": TamuChatTranscriber}
+PROVIDERS = {
+    "google": GeminiTranscriber,
+    "tamu": TamuChatTranscriber,
+    "tamu-gateway": TamuGatewayTranscriber,
+}
 
 NO_REASONING_NOTE = "_No reasoning trace was returned for this canvas._"
 
 
-def _create_transcriber(canvas, with_coords=False, model=None, provider="google"):
+def _create_transcriber(canvas, with_coords=False, model=None, provider="google",
+                        reasoning_effort=None, max_tokens=None):
     model = model or DEFAULT_MODEL
     transcriber_cls = PROVIDERS[provider]
     kwargs = {"model": model}
+    if provider != "google":
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
+        if max_tokens:
+            kwargs["max_tokens"] = max_tokens
     if with_coords:
         kwargs["prompt_path"] = 'prompts/gemini-htr-and-coords.md'
         kwargs["width"] = str(canvas.items[0].items[0].body.width)
@@ -48,7 +59,8 @@ def safe_json(obj):
 
 class ManifestHTRBuilder:
     def __init__(self, manifest: Manifest, new_id=None, new_base="https://example.org",
-                 nuke_tamu=False, with_coords=False, model=None, provider="google"):
+                 nuke_tamu=False, with_coords=False, model=None, provider="google",
+                 reasoning_effort=None, max_tokens=None):
         self.manifest_data = manifest
         self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
         self.new_base = new_base
@@ -56,6 +68,8 @@ class ManifestHTRBuilder:
         self.with_coords = with_coords
         self.model = model or DEFAULT_MODEL
         self.provider = provider
+        self.reasoning_effort = reasoning_effort
+        self.max_tokens = max_tokens
 
     def _convert_if_v2(self):
         if '@id' in self.manifest_data:
@@ -66,7 +80,8 @@ class ManifestHTRBuilder:
             self.manifest_data = converter.convert()
 
     def _create_transcriber(self, canvas):
-        return _create_transcriber(canvas, with_coords=self.with_coords, model=self.model, provider=self.provider)
+        return _create_transcriber(canvas, with_coords=self.with_coords, model=self.model, provider=self.provider,
+                                   reasoning_effort=self.reasoning_effort, max_tokens=self.max_tokens)
 
     def _get_image_url(self, canvas):
         return _get_image_url(canvas, with_coords=self.with_coords)
@@ -161,11 +176,14 @@ class ManifestAnnotationsBuilder:
     whole work, with one item per canvas (in canvas order) in each array.
     Used to populate an Archipelago AMI `annotations` column.
     """
-    def __init__(self, manifest: Manifest, new_id=None, model=None, provider="google"):
+    def __init__(self, manifest: Manifest, new_id=None, model=None, provider="google",
+                 reasoning_effort=None, max_tokens=None):
         self.manifest_data = manifest
         self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
         self.model = model or DEFAULT_MODEL
         self.provider = provider
+        self.reasoning_effort = reasoning_effort
+        self.max_tokens = max_tokens
 
     def _convert_if_v2(self):
         if '@id' in self.manifest_data:
@@ -182,7 +200,8 @@ class ManifestAnnotationsBuilder:
         reasoning_items = []
         for i, canvas in enumerate(tqdm(manifest.items, leave=False)):
             try:
-                transcriber = _create_transcriber(canvas, model=self.model, provider=self.provider)
+                transcriber = _create_transcriber(canvas, model=self.model, provider=self.provider,
+                                                  reasoning_effort=self.reasoning_effort, max_tokens=self.max_tokens)
                 image = _get_image_url(canvas)
                 api_response = transcriber.transcribe(image)
                 response = transcriber.get_response_dict(api_response)
@@ -239,10 +258,19 @@ def cli() -> None:
 @click.option("--model", "-m", default=None, help=f"Gemini model to use (default: {DEFAULT_MODEL}), e.g. gemini-3.5-flash")
 @click.option("--provider", "-P", type=click.Choice(list(PROVIDERS.keys())), default="google",
               help="Where to run the model: 'google' calls the Gemini API directly; "
-                   "'tamu' routes through TAMUS AI Chat (needs TAMUS_AI_CHAT_API_KEY)")
-def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool, with_coords: bool, model: str, provider: str) -> None:
+                   "'tamu' routes through TAMUS AI Chat (needs TAMUS_AI_CHAT_API_KEY); "
+                   "'tamu-gateway' routes through the TAMUS AI Gateway (needs "
+                   "TAMUS_AI_FRAMEWORK_API_KEY, Cloudflare WARP connected, and an explicit "
+                   "--model id from GET {endpoint}/v1/models, e.g. claude-haiku-4-5)")
+@click.option("--reasoning_effort", "-r", type=click.Choice(["low", "medium", "high"]), default=None,
+              help="Reasoning effort for the 'tamu'/'tamu-gateway' providers (default: medium)")
+@click.option("--max_tokens", "-x", type=int, default=None,
+              help="Max response tokens for the 'tamu'/'tamu-gateway' providers (raises the CoT+answer cap)")
+def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool, with_coords: bool, model: str, provider: str,
+                        reasoning_effort: str, max_tokens: int) -> None:
     json_data = load_manifest(path)
-    builder = ManifestHTRBuilder(json_data, new_id=new_id, nuke_tamu=is_tamu, with_coords=with_coords, model=model, provider=provider)
+    builder = ManifestHTRBuilder(json_data, new_id=new_id, nuke_tamu=is_tamu, with_coords=with_coords, model=model, provider=provider,
+                                 reasoning_effort=reasoning_effort, max_tokens=max_tokens)
     manifest = builder.build_htr()
     write_manifest(manifest, output)
 
@@ -266,8 +294,16 @@ def _write_ami_csv(path: str, fieldnames: list, rows: list):
 @click.option("--model", "-m", default=None, help=f"Gemini model to use (default: {DEFAULT_MODEL}), e.g. gemini-3.5-flash")
 @click.option("--provider", "-P", type=click.Choice(list(PROVIDERS.keys())), default="google",
               help="Where to run the model: 'google' calls the Gemini API directly; "
-                   "'tamu' routes through TAMUS AI Chat (needs TAMUS_AI_CHAT_API_KEY)")
-def transcribe_csv(path: str, output: str, model: str, provider: str) -> None:
+                   "'tamu' routes through TAMUS AI Chat (needs TAMUS_AI_CHAT_API_KEY); "
+                   "'tamu-gateway' routes through the TAMUS AI Gateway (needs "
+                   "TAMUS_AI_FRAMEWORK_API_KEY, Cloudflare WARP connected, and an explicit "
+                   "--model id from GET {endpoint}/v1/models, e.g. claude-haiku-4-5)")
+@click.option("--reasoning_effort", "-r", type=click.Choice(["low", "medium", "high"]), default=None,
+              help="Reasoning effort for the 'tamu'/'tamu-gateway' providers (default: medium)")
+@click.option("--max_tokens", "-x", type=int, default=None,
+              help="Max response tokens for the 'tamu'/'tamu-gateway' providers (raises the CoT+answer cap)")
+def transcribe_csv(path: str, output: str, model: str, provider: str,
+                   reasoning_effort: str, max_tokens: int) -> None:
     fieldnames, input_rows = _read_csv_rows(path)
     if "manifest" not in fieldnames:
         raise click.ClickException("Input CSV must have a 'manifest' column")
@@ -288,7 +324,8 @@ def transcribe_csv(path: str, output: str, model: str, provider: str) -> None:
             continue
         try:
             manifest_data = load_manifest(row["manifest"])
-            builder = ManifestAnnotationsBuilder(manifest_data, model=model, provider=provider)
+            builder = ManifestAnnotationsBuilder(manifest_data, model=model, provider=provider,
+                                                reasoning_effort=reasoning_effort, max_tokens=max_tokens)
             entries = builder.build_annotations()
         except Exception as e:
             print(f"\nError processing manifest {row.get('manifest')}: {e}")
@@ -318,8 +355,16 @@ def transcribe_csv(path: str, output: str, model: str, provider: str) -> None:
 @click.option("--model", "-m", default=None, help=f"Gemini model to use (default: {DEFAULT_MODEL}), e.g. gemini-3.5-flash")
 @click.option("--provider", "-P", type=click.Choice(list(PROVIDERS.keys())), default="google",
               help="Where to run the model: 'google' calls the Gemini API directly; "
-                   "'tamu' routes through TAMUS AI Chat (needs TAMUS_AI_CHAT_API_KEY)")
-def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool, model: str, provider: str) -> None:
+                   "'tamu' routes through TAMUS AI Chat (needs TAMUS_AI_CHAT_API_KEY); "
+                   "'tamu-gateway' routes through the TAMUS AI Gateway (needs "
+                   "TAMUS_AI_FRAMEWORK_API_KEY, Cloudflare WARP connected, and an explicit "
+                   "--model id from GET {endpoint}/v1/models, e.g. claude-haiku-4-5)")
+@click.option("--reasoning_effort", "-r", type=click.Choice(["low", "medium", "high"]), default=None,
+              help="Reasoning effort for the 'tamu'/'tamu-gateway' providers (default: medium)")
+@click.option("--max_tokens", "-x", type=int, default=None,
+              help="Max response tokens for the 'tamu'/'tamu-gateway' providers (raises the CoT+answer cap)")
+def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool, model: str, provider: str,
+                    reasoning_effort: str, max_tokens: int) -> None:
     all_ids = []
     with open(path, 'r') as f:
         for line in f:
@@ -341,6 +386,8 @@ def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool, mo
                 with_coords=with_coords,
                 model=model,
                 provider=provider,
+                reasoning_effort=reasoning_effort,
+                max_tokens=max_tokens,
             )
             manifest = builder.build_htr()
             write_manifest(manifest, str(output_path))
