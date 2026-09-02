@@ -12,6 +12,7 @@ click = "^8.3.1"
 tqdm = "^4.67.1"
 toon-format = {git = "https://github.com/toon-format/toon-python.git"}
 iiif-prezi3 = "^3.1.0"
+langdetect = "^1.0.9"
 
 [tool.poetry.scripts]
 iiif-transcribe = "iiif_paleography.transcribe:cli"

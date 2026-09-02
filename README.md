@@ -19,6 +19,7 @@ Example output looks like this:
 * [x] Add Transcription and Reasoning to a Single v3 Manifest.
 * [x] Upgrade (parts of a) v2 manifest to v3 so I can use iiif_prezi3.
 * [x] Init CLI utility.
+* [x] Detect non-English transcripts and add translations.
 * [ ] Run over a IIIF collection of manifests.
 * [ ] Run over a directory of manifests.
 
@@ -132,6 +133,27 @@ iiif-transcribe csv -p htrami_input.csv -o out.csv -P tamu-gateway -m gemini-3.5
 ```
 
 See [Configuration](#configuration) below for details and caveats on each provider.
+
+#### `--with_translations` / `-T`
+
+When this flag is passed to any command, the tool will:
+
+1. **Detect** the language of each canvas's transcription (using `langdetect` on the text with HTML tags stripped).
+2. **Translate** any **non-English** transcription to English using the same LLM provider configured via `--provider` (`google`, `tamu`, or `tamu-gateway`).
+3. **Store** the translation in the output annotations:
+
+- **CSV output** (`csv` command): a new `translating` array is added alongside `transcribing` and `reasoning` in the `annotations` column JSON. Each entry has the same shape:
+  ```json
+  {"value": "<span><b>Translation:</b><br/><br/>\n<Translated text></span>", "mime_type": "text/html"}
+  ```
+- **Manifest output** (`manifest` and `list` commands): IIIF annotations are added to each non-English canvas with `purpose="translating"`.
+
+English-language transcriptions are skipped (no extra API call is made). The feature is opt-in — without the flag, behavior is unchanged and no `translating` data is produced.
+
+```bash
+iiif-transcribe csv -p htrami_input.csv -o out.csv --with_translations
+iiif-transcribe manifest -p fixtures/manifest.json -o out.json --with_translations
+```
 
 Or run the transcriber directly:
 

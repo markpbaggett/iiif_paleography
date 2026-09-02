@@ -6,8 +6,14 @@ import requests
 from io import BytesIO
 
 
+# System prompt used for the text-only translation pass.  We load it from
+# prompts/gemini-translate.md so it can be tweaked independently of code.
+DEFAULT_TRANSLATE_PROMPT_PATH = "prompts/gemini-translate.md"
+
+
 class GeminiTranscriber:
-    def __init__(self, api_key=None, model="gemini-3.1-pro-preview", prompt_path='prompts/gemini-htr.md', width=None, height=None):
+    def __init__(self, api_key=None, model="gemini-3.1-pro-preview", prompt_path='prompts/gemini-htr.md', width=None, height=None,
+                 translate_prompt_path=DEFAULT_TRANSLATE_PROMPT_PATH):
         """
         Initialize the Gemini transcriber.
 
@@ -15,6 +21,8 @@ class GeminiTranscriber:
             api_key: API key for Gemini. If None, reads from GEMINI_KEY environment variable.
             model: The Gemini model to use.
             prompt_path: Path to the prompt file.
+            translate_prompt_path: Path to the system prompt used for the
+                ``translate_text`` method.
         """
         self.width = width
         self.height = height
@@ -23,6 +31,8 @@ class GeminiTranscriber:
         self.model = model
         self.prompt_path = prompt_path
         self.prompt = self._load_prompt()
+        self._translate_prompt_path = translate_prompt_path
+        self._translate_prompt = None
 
     def _load_prompt(self):
         """Load the prompt from file."""
@@ -117,6 +127,41 @@ class GeminiTranscriber:
                 result['transcription'] = part.text
 
         return result
+
+    def translate_text(self, text: str) -> str:
+        """
+        Translate *text* to English using the Gemini API.
+
+        Args:
+            text: The text to translate (may contain HTML markup).
+
+        Returns:
+            The translated text as a plain string, or an empty string if
+            translation could not be performed.
+        """
+        if not text:
+            return ""
+        try:
+            response = self.client.models.generate_content(
+                model=self.model,
+                config=types.GenerateContentConfig(
+                    system_instruction=self._load_translate_prompt(),
+                    temperature=0.3,  # Lower temperature for deterministic translation
+                ),
+                contents=[text],
+            )
+            if response and response.text:
+                return response.text.strip()
+        except Exception as e:
+            print(f"Warning: translation failed: {e}")
+        return ""
+
+    def _load_translate_prompt(self):
+        """Load the system prompt for translation if not already cached."""
+        if self._translate_prompt is None:
+            with open(self._translate_prompt_path, 'r') as f:
+                self._translate_prompt = f.read()
+        return self._translate_prompt
 
 
 if __name__ == "__main__":

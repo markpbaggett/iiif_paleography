@@ -4,6 +4,7 @@ from iiif_paleography.gemini import GeminiTranscriber
 from iiif_paleography.tamu_chat import TamuChatTranscriber
 from iiif_paleography.tamu_gateway import TamuGatewayTranscriber
 from iiif_paleography.iiif import IIIFv2tov3Converter
+from iiif_paleography.translate import detect_language, translate_with_transcriber
 import json
 import csv
 import os
@@ -60,7 +61,7 @@ def safe_json(obj):
 class ManifestHTRBuilder:
     def __init__(self, manifest: Manifest, new_id=None, new_base="https://example.org",
                  nuke_tamu=False, with_coords=False, model=None, provider="google",
-                 reasoning_effort=None, max_tokens=None):
+                 reasoning_effort=None, max_tokens=None, with_translations=False):
         self.manifest_data = manifest
         self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
         self.new_base = new_base
@@ -70,6 +71,7 @@ class ManifestHTRBuilder:
         self.provider = provider
         self.reasoning_effort = reasoning_effort
         self.max_tokens = max_tokens
+        self.with_translations = with_translations
 
     def _convert_if_v2(self):
         if '@id' in self.manifest_data:
@@ -86,7 +88,7 @@ class ManifestHTRBuilder:
     def _get_image_url(self, canvas):
         return _get_image_url(canvas, with_coords=self.with_coords)
 
-    def _add_transcription_annotations(self, canvas, response):
+    def _add_transcription_annotations(self, canvas, response, transcriber):
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if self.with_coords:
             word_coords = decode(response['transcription'])
@@ -124,6 +126,35 @@ class ManifestHTRBuilder:
                 },
                 target=canvas.id
             )
+            if self.with_translations:
+                self._add_translation_annotation(canvas, response, transcriber)
+
+    def _add_translation_annotation(self, canvas, response, transcriber):
+        """Add a translation annotation when the transcription is non-English."""
+        transcription = response['transcription']
+        lang = detect_language(transcription)
+        if lang == "en":
+            return
+        translated = translate_with_transcriber(transcriber, transcription)
+        if not translated:
+            return
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        canvas.make_annotation(
+            motivation="translating",
+            purpose="translating",
+            creator=self.model,
+            created=timestamp,
+            generator="iiif-paleography@v0.1.0",
+            generated=timestamp,
+            body={
+                "type": "TextualBody",
+                "language": "en",
+                "format": "text/html",
+                "purpose": "translating",
+                "value": f"{TRANSLATING_PREFIX}{translated}</span>"
+            },
+            target=canvas.id
+        )
 
     def build_htr(self):
         self._convert_if_v2()
@@ -142,7 +173,7 @@ class ManifestHTRBuilder:
 
                 api_response = transcriber.transcribe(image)
                 response = transcriber.get_response_dict(api_response)
-                self._add_transcription_annotations(canvas, response)
+                self._add_transcription_annotations(canvas, response, transcriber)
                 timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
                 canvas.make_annotation(
                     motivation="commenting",
@@ -167,6 +198,7 @@ class ManifestHTRBuilder:
 
 REASONING_PREFIX = "**<span><b>Reasoning</b></span>:**\n\n\n"
 TRANSCRIBING_PREFIX = "<span><b>Transcription:</b><br/><br/>\n"
+TRANSLATING_PREFIX = "<span><b>Translation:</b><br/><br/>\n"
 
 
 class ManifestAnnotationsBuilder:
@@ -177,13 +209,14 @@ class ManifestAnnotationsBuilder:
     Used to populate an Archipelago AMI `annotations` column.
     """
     def __init__(self, manifest: Manifest, new_id=None, model=None, provider="google",
-                 reasoning_effort=None, max_tokens=None):
+                 reasoning_effort=None, max_tokens=None, with_translations=False):
         self.manifest_data = manifest
         self.new_id = new_id if new_id else self.manifest_data.get("id", self.manifest_data.get("@id"))
         self.model = model or DEFAULT_MODEL
         self.provider = provider
         self.reasoning_effort = reasoning_effort
         self.max_tokens = max_tokens
+        self.with_translations = with_translations
 
     def _convert_if_v2(self):
         if '@id' in self.manifest_data:
@@ -198,6 +231,7 @@ class ManifestAnnotationsBuilder:
         manifest = Manifest(**self.manifest_data)
         transcribing_items = []
         reasoning_items = []
+        translating_items = []
         for i, canvas in enumerate(tqdm(manifest.items, leave=False)):
             try:
                 transcriber = _create_transcriber(canvas, model=self.model, provider=self.provider,
@@ -212,6 +246,23 @@ class ManifestAnnotationsBuilder:
                 transcribing_items.append(
                     {"value": TRANSCRIBING_PREFIX + response['transcription'] + "</span>", "mime_type": "text/html"}
                 )
+                if self.with_translations:
+                    transcription = response['transcription']
+                    lang = detect_language(transcription)
+                    if lang != "en":
+                        translated = translate_with_transcriber(transcriber, transcription)
+                        if translated:
+                            translating_items.append(
+                                {"value": TRANSLATING_PREFIX + translated + "</span>", "mime_type": "text/html"}
+                            )
+                        else:
+                            translating_items.append(
+                                {"value": TRANSLATING_PREFIX + "_Translation failed._</span>", "mime_type": "text/html"}
+                            )
+                    else:
+                        translating_items.append(
+                            {"value": TRANSLATING_PREFIX + "_Already in English; no translation needed._</span>", "mime_type": "text/html"}
+                        )
             except Exception as e:
                 print(f"\nError processing canvas {i} ({canvas.id}): {e}")
                 print(f"Inserting an error placeholder for this canvas and continuing...")
@@ -222,7 +273,11 @@ class ManifestAnnotationsBuilder:
                 transcribing_items.append(
                     {"value": TRANSCRIBING_PREFIX + error_note + "</span>", "mime_type": "text/html"}
                 )
-        return [{"transcribing": transcribing_items, "reasoning": reasoning_items}]
+                if self.with_translations:
+                    translating_items.append(
+                        {"value": TRANSLATING_PREFIX + error_note + "</span>", "mime_type": "text/html"}
+                    )
+        return [{"transcribing": transcribing_items, "reasoning": reasoning_items, "translating": translating_items}]
 
 
 def load_manifest(path: str):
@@ -266,11 +321,13 @@ def cli() -> None:
               help="Reasoning effort for the 'tamu'/'tamu-gateway' providers (default: medium)")
 @click.option("--max_tokens", "-x", type=int, default=None,
               help="Max response tokens for the 'tamu'/'tamu-gateway' providers (raises the CoT+answer cap)")
+@click.option("--with_translations", "-T", is_flag=True,
+              help="Detect non-English transcripts and add translation annotations")
 def transcribe_manifest(path: str, output: str, new_id: str, is_tamu: bool, with_coords: bool, model: str, provider: str,
-                        reasoning_effort: str, max_tokens: int) -> None:
+                        reasoning_effort: str, max_tokens: int, with_translations: bool) -> None:
     json_data = load_manifest(path)
     builder = ManifestHTRBuilder(json_data, new_id=new_id, nuke_tamu=is_tamu, with_coords=with_coords, model=model, provider=provider,
-                                 reasoning_effort=reasoning_effort, max_tokens=max_tokens)
+                                 reasoning_effort=reasoning_effort, max_tokens=max_tokens, with_translations=with_translations)
     manifest = builder.build_htr()
     write_manifest(manifest, output)
 
@@ -302,8 +359,10 @@ def _write_ami_csv(path: str, fieldnames: list, rows: list):
               help="Reasoning effort for the 'tamu'/'tamu-gateway' providers (default: medium)")
 @click.option("--max_tokens", "-x", type=int, default=None,
               help="Max response tokens for the 'tamu'/'tamu-gateway' providers (raises the CoT+answer cap)")
+@click.option("--with_translations", "-T", is_flag=True,
+              help="Detect non-English transcripts and add a 'translating' property to the annotations JSON in the CSV")
 def transcribe_csv(path: str, output: str, model: str, provider: str,
-                   reasoning_effort: str, max_tokens: int) -> None:
+                   reasoning_effort: str, max_tokens: int, with_translations: bool) -> None:
     fieldnames, input_rows = _read_csv_rows(path)
     if "manifest" not in fieldnames:
         raise click.ClickException("Input CSV must have a 'manifest' column")
@@ -325,7 +384,8 @@ def transcribe_csv(path: str, output: str, model: str, provider: str,
         try:
             manifest_data = load_manifest(row["manifest"])
             builder = ManifestAnnotationsBuilder(manifest_data, model=model, provider=provider,
-                                                reasoning_effort=reasoning_effort, max_tokens=max_tokens)
+                                                reasoning_effort=reasoning_effort, max_tokens=max_tokens,
+                                                with_translations=with_translations)
             entries = builder.build_annotations()
         except Exception as e:
             print(f"\nError processing manifest {row.get('manifest')}: {e}")
@@ -363,8 +423,10 @@ def transcribe_csv(path: str, output: str, model: str, provider: str,
               help="Reasoning effort for the 'tamu'/'tamu-gateway' providers (default: medium)")
 @click.option("--max_tokens", "-x", type=int, default=None,
               help="Max response tokens for the 'tamu'/'tamu-gateway' providers (raises the CoT+answer cap)")
+@click.option("--with_translations", "-T", is_flag=True,
+              help="Detect non-English transcripts and add translation annotations")
 def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool, model: str, provider: str,
-                    reasoning_effort: str, max_tokens: int) -> None:
+                    reasoning_effort: str, max_tokens: int, with_translations: bool) -> None:
     all_ids = []
     with open(path, 'r') as f:
         for line in f:
@@ -388,6 +450,7 @@ def transcribe_list(path: str, output: str, is_tamu: bool, with_coords: bool, mo
                 provider=provider,
                 reasoning_effort=reasoning_effort,
                 max_tokens=max_tokens,
+                with_translations=with_translations,
             )
             manifest = builder.build_htr()
             write_manifest(manifest, str(output_path))

@@ -7,6 +7,10 @@ import requests
 DEFAULT_ENDPOINT = "https://chat-api.tamu.ai"
 
 
+# Module-level constants used by translate_text().
+_DEFAULT_TRANSLATE_PROMPT_PATH = "prompts/gemini-translate.md"
+
+
 class TamuChatTranscriber:
     """
     Transcribes images through TAMUS AI Chat's OpenAI-compatible API
@@ -40,7 +44,8 @@ class TamuChatTranscriber:
 
     def __init__(self, api_key=None, endpoint=None, model="gemini-3.5-flash",
                  prompt_path='prompts/gemini-htr.md', width=None, height=None,
-                 reasoning_effort="medium", max_tokens=None):
+                 reasoning_effort="medium", max_tokens=None,
+                 translate_prompt_path=_DEFAULT_TRANSLATE_PROMPT_PATH):
         self.width = width
         self.height = height
         self.api_key = api_key or next(
@@ -55,6 +60,8 @@ class TamuChatTranscriber:
         self.reasoning_effort = reasoning_effort
         self.max_tokens = max_tokens
         self.prompt = self._load_prompt()
+        self._translate_prompt_path = translate_prompt_path
+        self._translate_prompt = None
 
     def _load_prompt(self):
         """Load the prompt from file."""
@@ -202,6 +209,51 @@ class TamuChatTranscriber:
         result['thought_process'] = reasoning
 
         return result
+
+    def _load_translate_prompt(self):
+        """Load the system prompt for translation if not already cached."""
+        if self._translate_prompt is None:
+            with open(self._translate_prompt_path, 'r') as f:
+                self._translate_prompt = f.read()
+        return self._translate_prompt
+
+    def translate_text(self, text: str) -> str:
+        """
+        Translate *text* to English via the TAMUS AI Chat API.
+
+        Args:
+            text: The text to translate (may contain HTML markup).
+
+        Returns:
+            The translated text as a plain string, or an empty string if
+            translation could not be performed.
+        """
+        if not text:
+            return ""
+        try:
+            response = requests.post(
+                f"{self.endpoint}{self.CHAT_COMPLETIONS_PATH}",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": self.model,
+                    "stream": False,
+                    "temperature": 0.3,
+                    "messages": [
+                        {"role": "system", "content": self._load_translate_prompt()},
+                        {"role": "user", "content": text},
+                    ],
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            if data.get('choices') and data['choices'][0].get('message', {}).get('content'):
+                return data['choices'][0]['message']['content'].strip()
+        except Exception as e:
+            print(f"Warning: translation failed: {e}")
+        return ""
 
 
 if __name__ == "__main__":
